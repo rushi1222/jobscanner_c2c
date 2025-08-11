@@ -1,0 +1,32 @@
+# macOS system files
+.DS_Store
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+
+# Chrome bot cache / driver data
+chrome_bot/
+BrowserMetrics-*
+ChromeFeatureState
+*.binarypb
+*.fingerprint
+*.pma
+*.json
+
+# Configs
+config.yaml
+email.yaml
+
+# Output
+output.csv
+*.log
+
+# IDE files
+.vscode/
+.idea/
