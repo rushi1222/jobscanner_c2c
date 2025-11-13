@@ -108,11 +108,11 @@ class LinkedinEasyApply:
         searches = list(product(self.positions, self.locations))
         random.shuffle(searches)
 
-        for (position, location) in searches:
+        for i, (position, location) in enumerate(searches):
             location_url = "&location=" + location
             job_page_number = 0
 
-            print(f"Starting the search for '{position}' in '{location}'.")
+            print(f"Starting the search for '{position}' in '{location}' (Search {i+1}/{len(searches)}).")
 
             while True:
                 print(f"Navigating to job page number {job_page_number} for '{position}' in '{location}'.")
@@ -126,10 +126,20 @@ class LinkedinEasyApply:
                     print(f"Completed logging jobs from page {job_page_number} for '{position}' in '{location}'.\n")
                     job_page_number += 1  # proceed to next page
 
+                    # Add break between pages to avoid rate limiting
+                    if job_page_number % 3 == 0:  # Every 3 pages
+                        print("⏸️ Taking a short break between pages...")
+                        time.sleep(random.uniform(30, 60))  # 30-60 second break
+
                 except Exception as e:
                     print(f"No more job pages found or an error occurred: {e}")
                     traceback.print_exc()
                     break  # Exit while loop if there's no next page or any error occurs
+
+            # Add break between different position/location searches
+            if i < len(searches) - 1:  # Don't sleep after the last search
+                print(f"⏸️ Taking a break before searching for next position/location combination...")
+                time.sleep(random.uniform(60, 120))  # 1-2 minute break between searches
 
 
     def apply_jobs(self, location):
@@ -169,7 +179,7 @@ class LinkedinEasyApply:
             raise Exception("Exiting due to extraction issue.")
 
         # Extract and log details for each job
-        for job_tile in job_list:
+        for i, job_tile in enumerate(job_list):
             job_title = company = poster = job_location = apply_method = link = ""
 
             try:
@@ -212,6 +222,10 @@ class LinkedinEasyApply:
                 self.seen_jobs.append(link)
             else:
                 print(f"❌ Skipped job: {job_title} at {company}")
+
+            # Add small delay between processing jobs to appear more human-like
+            if i > 0 and i % 5 == 0:  # Every 5 jobs
+                time.sleep(random.uniform(2, 5))  # 2-5 second break
 
         self.write_jobs_to_csv(jobs_data)
 
@@ -361,7 +375,8 @@ class LinkedinEasyApply:
     
     
     def is_valid_job(self, job_title):
-        keywords = ['front', 'full', 'ui', 'ux', 'web', 'react', 'angular', 'data']
+        keywords = ['front', 'full', 'ui', 'ux', 'web', 'react', 'angular', 'software', 'AI']
+        # keywords = ['software', 'java', 'fullstack', 'python', 'Backend']
         cleaned_title = job_title.replace(" ", "").replace("-", "").lower()
 
         for keyword in keywords:
@@ -425,7 +440,27 @@ class LinkedinEasyApply:
 
         # **🔹 Toggle 24-hour filter based on config**
         enable_24_hour_filter = parameters.get('date', {}).get('24 hours', False)  # Read setting
-        date_url = "&f_TPR=r86400" if enable_24_hour_filter else ""  # Apply if enabled
+        date_url = "&f_TPR=r3600" if enable_24_hour_filter else ""  # Apply if enabled
+
+        # **🔹 Add salary minimum filter based on config**
+        salary_url = ""
+        salary_minimum = parameters.get('salaryMinimum', 0)
+        if salary_minimum and salary_minimum > 0:
+            # LinkedIn salary filter mapping (approximate ranges)
+            if salary_minimum >= 200000:
+                salary_url = "&f_SB2=7"  # $200k+
+            elif salary_minimum >= 160000:
+                salary_url = "&f_SB2=6"  # $160k+
+            elif salary_minimum >= 120000:
+                salary_url = "&f_SB2=5"  # $120k+
+            elif salary_minimum >= 100000:
+                salary_url = "&f_SB2=4"  # $100k+
+            elif salary_minimum >= 80000:
+                salary_url = "&f_SB2=3"  # $80k+
+            elif salary_minimum >= 60000:
+                salary_url = "&f_SB2=2"  # $60k+
+            elif salary_minimum >= 40000:
+                salary_url = "&f_SB2=1"  # $40k+
 
         easy_apply_url = "&f_AL=false"  # Prevents Easy Apply-only filtering issues
 
@@ -435,7 +470,7 @@ class LinkedinEasyApply:
         ]
         extra_search_terms_str = '&'.join(
             term for term in extra_search_terms if len(term) > 0
-        ) + easy_apply_url + date_url  # ✅ Append the forced 24-hour filter (if enabled)
+        ) + easy_apply_url + date_url + salary_url  # ✅ Append the salary filter
 
         return extra_search_terms_str
 
@@ -458,7 +493,26 @@ class LinkedinEasyApply:
         if enable_24_hour_filter:
             actual_url += "&f_TPR=r3600"
 
+        # **Apply salary filter if configured**
+        if self.salary_minimum and self.salary_minimum > 0:
+            # LinkedIn salary filter mapping (approximate ranges)
+            if self.salary_minimum >= 200000:
+                actual_url += "&f_SB2=7"  # $200k+
+            elif self.salary_minimum >= 160000:
+                actual_url += "&f_SB2=6"  # $160k+
+            elif self.salary_minimum >= 120000:
+                actual_url += "&f_SB2=5"  # $120k+
+            elif self.salary_minimum >= 100000:
+                actual_url += "&f_SB2=4"  # $100k+
+            elif self.salary_minimum >= 80000:
+                actual_url += "&f_SB2=3"  # $80k+
+            elif self.salary_minimum >= 60000:
+                actual_url += "&f_SB2=2"  # $60k+
+            elif self.salary_minimum >= 40000:
+                actual_url += "&f_SB2=1"  # $40k+
+
         print(f"🔍 Performing actual job search for '{position}' in '{location}', Page {job_page}")
+        print(f"💰 Salary filter: ${self.salary_minimum:,}+ (if configured)")
         self.browser.get(actual_url)
         time.sleep(30)
 
