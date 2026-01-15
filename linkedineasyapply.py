@@ -1,19 +1,24 @@
-import time, random, csv, pyautogui, pdb, traceback, sys, os, re
+"""
+LINKEDINEASYAPPLY.PY - LinkedIn Login Handler
+==============================================
+This file contains the LinkedinEasyApply class that handles:
+- LinkedIn login with session persistence
+- Security checkpoint detection and handling  
+- Browser initialization and configuration
+
+The login() method attempts to restore a previous session from chrome_bot directory.
+If no session exists or it's expired, it calls load_login_page_and_login() to perform
+a fresh login using credentials from config.yaml.
+"""
+
+import time, random, os, re, csv
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium import webdriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-from selenium.common.exceptions import StaleElementReferenceException
-from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select
-from datetime import date, datetime
-from itertools import product
-import logging
-from email_notifier import send_email
-
-
+from datetime import datetime
+from email_notifier import send_bulk_emails, create_email_template
 
 
 class LinkedinEasyApply:
@@ -29,7 +34,6 @@ class LinkedinEasyApply:
         self.positions = parameters.get('positions', [])
         self.locations = parameters.get('locations', [])
         self.residency = parameters.get('residentStatus', [])
-        self.base_search_url = self.get_base_search_url(parameters)
         self.seen_jobs = []
         self.file_name = "output"
         self.unprepared_questions_file_name = "unprepared_questions"
@@ -50,13 +54,18 @@ class LinkedinEasyApply:
         self.experience_default = int(self.experience['default'])
         self.stop_processing = False
         self.titles = parameters.get('title', [])
-        self.date = parameters.get('date', {})  # ✅ Store `date` setting from config file
-
-
+        self.date = parameters.get('date', {})
+        self.sort_by = parameters.get('sort_by', {})
+        self.resume_mapping = parameters.get('resumeMapping', {})
 
         options = webdriver.ChromeOptions()
 
     def login(self):
+        """
+        Attempts to restore previous LinkedIn session or performs fresh login.
+        Checks if chrome_bot session directory exists and tries to load LinkedIn feed.
+        If session is invalid or doesn't exist, calls load_login_page_and_login().
+        """
         try:
             # Check if the "chrome_bot" directory exists
             print("Attempting to restore previous session...")
@@ -75,9 +84,12 @@ class LinkedinEasyApply:
         except TimeoutException:
             print("Timeout occurred, checking for security challenges...")
             self.security_check()
-            # raise Exception("Could not login!")
 
     def security_check(self):
+        """
+        Detects LinkedIn security challenges and pauses for manual completion.
+        Checks URL and page source for security checkpoint indicators.
+        """
         current_url = self.browser.current_url
         page_source = self.browser.page_source
 
@@ -86,6 +98,11 @@ class LinkedinEasyApply:
             time.sleep(random.uniform(5.5, 10.5))
 
     def load_login_page_and_login(self):
+        """
+        Performs fresh LinkedIn login using credentials from config.yaml.
+        Navigates to login page, enters email/password, clicks login button,
+        and waits for successful redirect to feed page.
+        """
         self.browser.get("https://www.linkedin.com/login")
 
         # Wait for the username field to be present
@@ -104,475 +121,173 @@ class LinkedinEasyApply:
 
         time.sleep(random.uniform(5, 10))
 
-    def start_applying(self):
-        searches = list(product(self.positions, self.locations))
-        random.shuffle(searches)
-
-        for i, (position, location) in enumerate(searches):
-            location_url = "&location=" + location
-            job_page_number = 0
-
-            print(f"Starting the search for '{position}' in '{location}' (Search {i+1}/{len(searches)}).")
-
-            while True:
-                print(f"Navigating to job page number {job_page_number} for '{position}' in '{location}'.")
-                try:
-                    self.next_job_page(position, location_url, job_page_number)
-                    time.sleep(random.uniform(1.0, 2.0))  # brief wait for page load
-                    
-                    print("Extracting and logging jobs on this page...")
-                    self.apply_jobs(location)
-
-                    print(f"Completed logging jobs from page {job_page_number} for '{position}' in '{location}'.\n")
-                    job_page_number += 1  # proceed to next page
-
-                    # Add break between pages to avoid rate limiting
-                    if job_page_number % 3 == 0:  # Every 3 pages
-                        print("⏸️ Taking a short break between pages...")
-                        time.sleep(random.uniform(30, 60))  # 30-60 second break
-
-                except Exception as e:
-                    print(f"No more job pages found or an error occurred: {e}")
-                    traceback.print_exc()
-                    break  # Exit while loop if there's no next page or any error occurs
-
-            # Add break between different position/location searches
-            if i < len(searches) - 1:  # Don't sleep after the last search
-                print(f"⏸️ Taking a break before searching for next position/location combination...")
-                time.sleep(random.uniform(60, 120))  # 1-2 minute break between searches
-
-
-    def apply_jobs(self, location):
-        jobs_data = []
-
-        # Check for explicit "no jobs" messages
-        page_source_lower = self.browser.page_source.lower()
-
-        if 'no matching jobs found' in page_source_lower:
-            print("🚫 No matching jobs found on this page.")
-            raise Exception("No more jobs available.")
-        if 'unfortunately, things are' in page_source_lower:
-            print("🚫 LinkedIn error detected.")
-            raise Exception("No more jobs available due to LinkedIn error.")
-        if 'jobs you may be interested in' in page_source_lower:
-            print("🚫 No specific jobs, only recommendations shown.")
-            raise Exception("Only recommended jobs available, exiting.")
-
-        # Dynamically find the job list container
-        try:
-            child_element = self.browser.find_element(By.CLASS_NAME, "scaffold-layout__list-item")
-            parent_element = child_element.find_element(By.XPATH, "..")
-            parent_class_name = parent_element.get_attribute("class").split()[0]
-
-            job_results_by_class = self.browser.find_element(By.CSS_SELECTOR, f".{parent_class_name}")
-            self.scroll_slow(job_results_by_class)
-            self.scroll_slow(job_results_by_class, step=300, reverse=True)
-
-            job_list = self.browser.find_elements(By.CLASS_NAME, parent_class_name)[0].find_elements(
-                By.CLASS_NAME, 'scaffold-layout__list-item')
-
-            if not job_list:
-                print("🚫 No job elements found on page.")
-                raise Exception("No job elements found.")
-        except Exception as e:
-            print(f"🚫 Exception during job extraction: {e}")
-            raise Exception("Exiting due to extraction issue.")
-
-        # Extract and log details for each job
-        for i, job_tile in enumerate(job_list):
-            job_title = company = poster = job_location = apply_method = link = ""
-
-            try:
-                job_title_element = job_tile.find_element(By.CLASS_NAME, 'job-card-container__link')
-                job_title = job_title_element.find_element(By.TAG_NAME, 'strong').text
-                link = job_title_element.get_attribute('href').split('?')[0]
-            except:
-                continue
-
-            try:
-                company = job_tile.find_element(By.CLASS_NAME, 'artdeco-entity-lockup__subtitle').text
-            except:
-                pass
-            try:
-                hiring_line = job_tile.find_element(By.XPATH, './/span[contains(., "is hiring for this")]')
-                poster = hiring_line.text.split(' is hiring for this')[0]
-            except:
-                pass
-            try:
-                job_location = job_tile.find_element(By.CLASS_NAME, 'job-card-container__metadata-item').text
-            except:
-                pass
-            try:
-                apply_method = job_tile.find_element(By.CLASS_NAME, 'job-card-container__apply-method').text
-            except:
-                pass
-
-            contains_blacklisted_keywords = any(word.lower() in job_title.lower() for word in self.title_blacklist)
-
-            if (company.lower() not in map(str.lower, self.company_blacklist) and
-                poster.lower() not in map(str.lower, self.poster_blacklist) and
-                not contains_blacklisted_keywords and
-                link not in self.seen_jobs and
-                self.is_valid_job(job_title)):
-
-                print(f"✅ Logging valid job: {job_title} at {company}")
-                jobs_data.append([
-                    job_title, company, poster, job_location, apply_method, link, location, datetime.now()
-                ])
-                self.seen_jobs.append(link)
-            else:
-                print(f"❌ Skipped job: {job_title} at {company}")
-
-            # Add small delay between processing jobs to appear more human-like
-            if i > 0 and i % 5 == 0:  # Every 5 jobs
-                time.sleep(random.uniform(2, 5))  # 2-5 second break
-
-        self.write_jobs_to_csv(jobs_data)
-
+    def search_posts(self):
+        """
+        Searches for LinkedIn posts using positions/keywords from config.yaml.
+        Iterates through each position, constructs post search URL with date and sort filters,
+        and navigates to filtered post results.
+        """
+        print("\n🔍 Starting post search...")
         
-    def write_jobs_to_csv(self, jobs_data):
-            file_path = f"{self.file_name}.csv"
-            header = ["Job Title", "Company", "Poster", "Job Location", "Apply Method", "Job Link", "Search Location", "Timestamp"]
-
-            existing_links = set()
-            if os.path.isfile(file_path):
-                with open(file_path, 'r', encoding='utf-8') as csvfile:
-                    reader = csv.reader(csvfile)
-                    next(reader, None)  # Skip header
-                    for row in reader:
-                        if len(row) >= 6:
-                            existing_links.add(row[5])
-
-            # Filter out jobs already logged
-            new_jobs_data = []
-            email_body = "📢 New Jobs Logged:\n\n"
-
-            for job in jobs_data:
-                if job[5] in existing_links:
-                    print(f"⚠️ Job already present, skipping: {job[0]} at {job[1]}")
-                else:
-                    print(f"✅ New job log added: {job[0]} at {job[1]}")
-                    new_jobs_data.append(job)
-                    # Add details to email body
-                    email_body += f"🔹 **{job[0]}** at **{job[1]}**\n"
-                    email_body += f"📍 Location: {job[3]}\n"
-                    email_body += f"📝 Apply Method: {job[4]}\n"
-                    email_body += f"🔗 Job Link: {job[5]}\n"
-                    email_body += f"🔎 Search Location: {job[6]}\n"
-                    email_body += f"⏳ Timestamp: {job[7]}\n"
-                    email_body += "-" * 50 + "\n"
-
-            # Write only new jobs to CSV
-            if new_jobs_data:
-                file_exists = os.path.isfile(file_path)
-                with open(file_path, 'a', newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(csvfile)
-                    if not file_exists:
-                        writer.writerow(header)
-                    writer.writerows(new_jobs_data)
-
-                print(f"Successfully logged {len(new_jobs_data)} new jobs to {file_path}.")
-
-                # Send email notification
-                email_subject = f"📌 {len(new_jobs_data)} New Jobs Logged"
-                send_email(email_subject, email_body)
-
-            else:
-                print("No new jobs to log.")
-
-    def unfollow(self):
-        try:
-            follow_checkbox = self.browser.find_element(By.XPATH,
-                                                        "//label[contains(.,\'to stay up to date with their page.\')]").click()
-            follow_checkbox.click()
-        except:
-            pass
-
-  
-
-    def enter_text(self, element, text):
-        element.clear()
-        element.send_keys(text)
-
-    def select_dropdown(self, element, text):
-        select = Select(element)
-        select.select_by_visible_text(text)
-
-    # Radio Select
-    def radio_select(self, element, label_text, clickLast=False):
-        label = element.find_element(By.TAG_NAME, 'label')
-        if label_text in label.text.lower() or clickLast == True:
-            label.click()
-
-    # Contact info fill-up
-    def contact_info(self, form):
-        print("Trying to fill up contact info fields")
-        frm_el = form.find_elements(By.TAG_NAME, 'label')
-        if len(frm_el) > 0:
-            for el in frm_el:
-                text = el.text.lower()
-                if 'email address' in text:
-                    continue
-                elif 'phone number' in text:
-                    try:
-                        country_code_picker = el.find_element(By.XPATH,
-                                                              '//select[contains(@id,"phoneNumber")][contains(@id,"country")]')
-                        self.select_dropdown(country_code_picker, self.personal_info['Phone Country Code'])
-                    except Exception as e:
-                        print("Country code " + self.personal_info[
-                            'Phone Country Code'] + " not found. Please make sure it is same as in LinkedIn.")
-                        print(e)
-                    try:
-                        phone_number_field = el.find_element(By.XPATH,
-                                                             '//input[contains(@id,"phoneNumber")][contains(@id,"nationalNumber")]')
-                        self.enter_text(phone_number_field, self.personal_info['Mobile Phone Number'])
-                    except Exception as e:
-                        print("Could not enter phone number:")
-                        print(e)
-
- 
-
-    def write_to_file(self, company,no_applicants, job_title, link, location, search_location):
-        to_write = [company,no_applicants, job_title, link, location, search_location,datetime.now()]
-        file_path = self.file_name + ".csv"
-        print(f'updated {file_path}.')
-
-        with open(file_path, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(to_write)
-
-
-    def scroll_slow(self, scrollable_element, start=0, end=3600, step=100, reverse=False):
-        try:
-            # Check if the element is scrollable
-            is_scrollable = self.browser.execute_script(
-                "return arguments[0].scrollHeight > arguments[0].clientHeight", scrollable_element
-            )
-            if not is_scrollable:
-                print("The element is not scrollable.")
-                return
-
-            # Adjust parameters for reverse scrolling
-            if reverse:
-                start, end = end, start
-                step = -step
-
-            # Get the scrollable height
-            element_height = self.browser.execute_script("return arguments[0].scrollHeight", scrollable_element)
-            print(f"Element scrollable height: {element_height}")
-            end = min(end, element_height)
-
-            # Perform scrolling
-            for i in range(start, end, step):
-                try:
-                    self.browser.execute_script("arguments[0].scrollTo(0, {})".format(i), scrollable_element)
-                    time.sleep(random.uniform(1.0, 2.6))
-                except StaleElementReferenceException:
-                    print("Scrollable element became stale during scrolling.")
-                    break
-        except Exception as e:
-            print(f"An error occurred while scrolling: {e}")
-    
-    
-    def is_valid_job(self, job_title):
-        keywords = ['front', 'full', 'ui', 'ux', 'web', 'react', 'angular', 'software', 'AI']
-        # keywords = ['software', 'java', 'fullstack', 'python', 'Backend']
-        cleaned_title = job_title.replace(" ", "").replace("-", "").lower()
-
-        for keyword in keywords:
-            if self.keyword_in_title(cleaned_title, keyword):
-                return True
-        return False
-
-    def keyword_in_title(self, title, keyword):
-        title_len = len(title)
-        keyword_len = len(keyword)
-
-        for i in range(title_len - keyword_len + 1):
-            match_found = True
-            for j in range(keyword_len):
-                if title[i + j] != keyword[j]:
-                    match_found = False
-                    break
-            if match_found:
-                return True
-        return False
-
-
-    def avoid_lock(self):
-        if self.disable_lock:
-            return
-
-        pyautogui.keyDown('ctrl')
-        pyautogui.press('esc')
-        pyautogui.keyUp('ctrl')
-        time.sleep(1.0)
-        pyautogui.press('esc')
-
-
-    def get_base_search_url(self, parameters):
-        remote_url = ""
-        lessthanTenApplicants_url = ""
-
-        if parameters.get('remote'):
-            remote_url = "&f_WT=2"  # Filter for remote jobs
-        else:
-            remote_url = ""  # Adjust for hybrid/onsite options
-
-        if parameters['lessthanTenApplicants']:
-            lessthanTenApplicants_url = "&f_EA=true"  # Filter for jobs with <10 applicants
-
-        level = 1
-        experience_level = parameters.get('experienceLevel', [])
-        experience_url = "f_E="
-        for key in experience_level.keys():
-            if experience_level[key]:
-                experience_url += "%2C" + str(level)
-            level += 1
-
-        distance_url = "?distance=" + str(parameters['distance'])
-
-        job_types_url = "f_JT="
-        job_types = parameters.get('jobTypes', [])
-        for key in job_types:
-            if job_types[key]:
-                job_types_url += "%2C" + key[0].upper()
-
-        # **🔹 Toggle 24-hour filter based on config**
-        enable_24_hour_filter = parameters.get('date', {}).get('24 hours', False)  # Read setting
-        date_url = "&f_TPR=r3600" if enable_24_hour_filter else ""  # Apply if enabled
-
-        # **🔹 Add salary minimum filter based on config**
-        salary_url = ""
-        salary_minimum = parameters.get('salaryMinimum', 0)
-        if salary_minimum and salary_minimum > 0:
-            # LinkedIn salary filter mapping (approximate ranges)
-            if salary_minimum >= 200000:
-                salary_url = "&f_SB2=7"  # $200k+
-            elif salary_minimum >= 160000:
-                salary_url = "&f_SB2=6"  # $160k+
-            elif salary_minimum >= 120000:
-                salary_url = "&f_SB2=5"  # $120k+
-            elif salary_minimum >= 100000:
-                salary_url = "&f_SB2=4"  # $100k+
-            elif salary_minimum >= 80000:
-                salary_url = "&f_SB2=3"  # $80k+
-            elif salary_minimum >= 60000:
-                salary_url = "&f_SB2=2"  # $60k+
-            elif salary_minimum >= 40000:
-                salary_url = "&f_SB2=1"  # $40k+
-
-        easy_apply_url = "&f_AL=false"  # Prevents Easy Apply-only filtering issues
-
-        # **Combine all filters into one query**
-        extra_search_terms = [
-            distance_url, remote_url, lessthanTenApplicants_url, job_types_url, experience_url
-        ]
-        extra_search_terms_str = '&'.join(
-            term for term in extra_search_terms if len(term) > 0
-        ) + easy_apply_url + date_url + salary_url  # ✅ Append the salary filter
-
-        return extra_search_terms_str
-
-    def next_job_page(self, position, location, job_page):
-        # **Step 1: Perform a dummy search for a common job to refresh LinkedIn's cache**
-        # dummy_url = "https://www.linkedin.com/jobs/search/?keywords=iOS%20Developer"
-        # print("🔍 Performing dummy search for 'iOS Developer' before actual search...")
-        # self.browser.get(dummy_url)
-
-        # # **Step 2: Wait briefly**
-        # time.sleep(10)
-
-        # **Step 3: Read 24-hour filter setting using instance variable**
-        enable_24_hour_filter = self.date.get('24 hours', False)  # ✅ Use `self.date` instead of `self.parameters`
-
-        # **Step 4: Construct the actual job search URL**
-        actual_url = f"https://www.linkedin.com/jobs/search/{self.base_search_url}&keywords={position}{location}&start={job_page * 25}"
-
-        # **Apply 24-hour filter if enabled**
-        if enable_24_hour_filter:
-            actual_url += "&f_TPR=r3600"
-
-        # **Apply salary filter if configured**
-        if self.salary_minimum and self.salary_minimum > 0:
-            # LinkedIn salary filter mapping (approximate ranges)
-            if self.salary_minimum >= 200000:
-                actual_url += "&f_SB2=7"  # $200k+
-            elif self.salary_minimum >= 160000:
-                actual_url += "&f_SB2=6"  # $160k+
-            elif self.salary_minimum >= 120000:
-                actual_url += "&f_SB2=5"  # $120k+
-            elif self.salary_minimum >= 100000:
-                actual_url += "&f_SB2=4"  # $100k+
-            elif self.salary_minimum >= 80000:
-                actual_url += "&f_SB2=3"  # $80k+
-            elif self.salary_minimum >= 60000:
-                actual_url += "&f_SB2=2"  # $60k+
-            elif self.salary_minimum >= 40000:
-                actual_url += "&f_SB2=1"  # $40k+
-
-        print(f"🔍 Performing actual job search for '{position}' in '{location}', Page {job_page}")
-        print(f"💰 Salary filter: ${self.salary_minimum:,}+ (if configured)")
-        self.browser.get(actual_url)
-        time.sleep(30)
-
-        self.avoid_lock()
-
-    # def get_base_search_url(self, parameters):
-    #         remote_url = ""
-    #         lessthanTenApplicants_url = ""
-
-    #         if parameters.get('remote'):
-    #             remote_url = "&f_WT=2"
-    #         else:
-    #             remote_url = ""  # TO DO: Other &f_WT= options { WT=1 onsite, WT=2 remote, WT=3 hybrid, f_WT=1%2C2%2C3 }
-
-    #         if parameters['lessthanTenApplicants']:
-    #             lessthanTenApplicants_url = "&f_EA=true"
-
-    #         level = 1
-    #         experience_level = parameters.get('experienceLevel', [])
-    #         experience_url = "f_E="
-    #         for key in experience_level.keys():
-    #             if experience_level[key]:
-    #                 experience_url += "%2C" + str(level)
-    #             level += 1
-
-    #         distance_url = "?distance=" + str(parameters['distance'])
-
-    #         job_types_url = "f_JT="
-    #         job_types = parameters.get('jobTypes', [])
-    #         for key in job_types:
-    #             if job_types[key]:
-    #                 job_types_url += "%2C" + key[0].upper()
-
-    #         # Apply the 24-hour filter by default
+        # Determine date filter from config
+        date_filter = ""
+        if self.date.get('24 hours', False):
+            date_filter = "past-24h"
+        elif self.date.get('week', False):
+            date_filter = "past-week"
+        elif self.date.get('month', False):
+            date_filter = "past-month"
+        
+        # Determine sort order from config
+        sort_order = "relevance"  # default
+        if self.sort_by.get('date_posted', False):
+            sort_order = "date_posted"
+        elif self.sort_by.get('relevance', False):
+            sort_order = "relevance"
+        
+        # Iterate through positions from config (used as search keywords)
+        for position in self.positions:
+            print(f"\n📌 Searching posts for: {position}")
             
-    #         # date_url = "&f_TPR=r86400"
-    #         date_url = ""
-    #         easy_apply_url = "&f_AL=false"
+            # Build search URL with filters
+            search_url = f"https://www.linkedin.com/search/results/content/?keywords={position}"
+            
+            # Add date filter if configured
+            if date_filter:
+                search_url += f"&datePosted=%22{date_filter}%22"
+            
+            # Add sort order
+            search_url += f"&sortBy=%22{sort_order}%22"
+            
+            # Add origin parameter
+            search_url += "&origin=FACETED_SEARCH"
+            
+            print(f"🌐 URL: {search_url}")
+            print(f"📅 Date filter: {date_filter if date_filter else 'all time'}")
+            print(f"🔃 Sort by: {sort_order}")
+            
+            self.browser.get(search_url)
+            time.sleep(random.uniform(3, 5))
+            
+            print(f"✅ Successfully navigated to post search page for '{position}'")
+            
+            # Scroll down to load more content
+            print("\n📜 Scrolling to load more posts...")
+            scroll_pause_time = 2
+            scroll_increments = 15  # Number of times to scroll
+            
+            for i in range(scroll_increments):
+                # Scroll down
+                self.browser.execute_script("window.scrollBy(0, 800);")
+                time.sleep(random.uniform(1.5, 2.5))
+                print(f"  Scrolled {i+1}/{scroll_increments}")
+            
+            print("✅ Finished scrolling, content loaded")
+            
+            # Extract emails from page text
+            print("\n📧 Extracting email addresses from page...")
+            page_text = self.browser.page_source
+            
+            # Regex pattern to find emails (must contain @ and .com)
+            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.com\b'
+            emails_found = re.findall(email_pattern, page_text)
+            
+            # Remove duplicates
+            unique_emails = list(set(emails_found))
+            
+            print(f"✅ Found {len(unique_emails)} unique email(s)")
+            
+            # Save to output file
+            if unique_emails:
+                new_emails_logged = self.save_emails_to_file(unique_emails, position)
+                # Generate email template and send emails
+                if new_emails_logged:
+                    self.send_emails_to_contacts(new_emails_logged, position)
+            else:
+                print("⚠️ No emails found on this page")
+            
+            # Pause after first position for now
 
-    #         # Combine all parts of the URL
-    #         extra_search_terms = [distance_url, remote_url, lessthanTenApplicants_url, job_types_url, experience_url]
-    #         extra_search_terms_str = '&'.join(
-    #             term for term in extra_search_terms if len(term) > 0) + easy_apply_url + date_url
+    def save_emails_to_file(self, emails, position):
+        """
+        Saves extracted emails to CSV file with timestamp and position.
+        Avoids duplicates: same email + same position on same day won't be re-logged.
+        """
+        output_file = "emails_output.csv"
+        file_exists = os.path.isfile(output_file)
+        current_time = datetime.now()
+        current_date = current_time.strftime("%Y-%m-%d")
+        current_datetime = current_time.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Read existing entries to check for duplicates
+        existing_entries = set()
+        if file_exists:
+            with open(output_file, 'r', encoding='utf-8') as csvfile:
+                reader = csv.reader(csvfile)
+                next(reader, None)  # Skip header
+                for row in reader:
+                    if len(row) >= 3:
+                        email = row[0]
+                        pos = row[1]
+                        date_str = row[2].split(' ')[0]  # Extract date only (YYYY-MM-DD)
+                        existing_entries.add((email, pos, date_str))
+        
+        # Filter out duplicates
+        new_emails = []
+        skipped_count = 0
+        for email in emails:
+            entry_key = (email, position, current_date)
+            if entry_key in existing_entries:
+                print(f"  ⏭️  Skipped (already logged today): {email}")
+                skipped_count += 1
+            else:
+                new_emails.append(email)
+        
+        # Write only new emails
+        if new_emails:
+            with open(output_file, 'a', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                
+                # Write header if file doesn't exist
+                if not file_exists:
+                    writer.writerow(["Email", "Position", "Date/Time"])
+                
+                # Write each new email
+                for email in new_emails:
+                    writer.writerow([email, position, current_datetime])
+                    print(f"  📝 Logged: {email}")
+            
+            print(f"\n✅ Saved {len(new_emails)} new email(s) to {output_file}")
+        else:
+            print(f"\n⚠️ No new emails to save")
+        
+        if skipped_count > 0:
+            print(f"⏭️  Skipped {skipped_count} duplicate(s) from today")
+        
+        return new_emails  # Return list of new emails that were logged
 
-    #         return extra_search_terms_str
-
-
-    # def next_job_page(self, position, location, job_page):
-    #     # Step 1: Perform a dummy search for "iOS Developer"
-    #     dummy_url = "https://www.linkedin.com/jobs/search/?keywords=iOS%20Developer"
-    #     print("🔍 Performing dummy search for 'iOS Developer' before actual search...")
-    #     self.browser.get(dummy_url)
-
-    #     # Step 2: Wait for 10 seconds before proceeding
-    #     time.sleep(10)
-
-    #     # Step 3: Perform the actual job search
-    #     actual_url = f"https://www.linkedin.com/jobs/search/{self.base_search_url}&keywords={position}{location}&start={job_page * 25}"
-    #     print(f"🔍 Performing actual job search for '{position}' in '{location}', Page {job_page}")
-    #     self.browser.get(actual_url)
-    #     time.sleep(30)
-
-    #     self.avoid_lock()
+    def send_emails_to_contacts(self, email_list, position):
+        """
+        Sends emails to all contacts using the email template.
+        Uses position-specific resume from resumeMapping.
+        """
+        # Create email template using email_notifier
+        subject, body = create_email_template(position, self.personal_info)
+        
+        # Get position-specific resume from mapping
+        resume_filename = self.resume_mapping.get(position)
+        resume_path = None
+        
+        if resume_filename:
+            resume_path = os.path.join("resumes", resume_filename)
+            if os.path.exists(resume_path):
+                print(f"📎 Using resume: {resume_filename}")
+            else:
+                print(f"⚠️ Resume not found: {resume_path}")
+                resume_path = None
+        else:
+            print(f"⚠️ No resume mapping found for position: {position}")
+        
+        # Send emails
+        print(f"\n📧 Sending emails to {len(email_list)} recipient(s)...")
+        send_bulk_emails(email_list, subject, body, resume_path)

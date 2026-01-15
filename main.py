@@ -1,4 +1,25 @@
-import yaml, os, time
+"""
+MAIN.PY - LinkedIn Job Application Bot Entry Point
+===================================================
+This is the main entry point for an automated LinkedIn job application bot.
+It performs the following tasks:
+
+1. Validates configuration from config.yaml (email, password, job preferences, etc.)
+2. Initializes a Chrome browser instance with session persistence (chrome_bot directory)
+3. Creates a LinkedinEasyApply bot instance that:
+   - Logs into LinkedIn
+   - Continuously searches for and applies to jobs based on your criteria
+   - Handles security checks and application forms
+4. Runs indefinitely in a loop - applies to jobs, then waits 10 minutes if no jobs found
+
+Key Features:
+- Session restoration to avoid repeated logins
+- Automated form filling for LinkedIn Easy Apply jobs
+- Configurable job filters (experience, location, remote, etc.)
+- Continuous monitoring and application submission
+"""
+
+import yaml, os, time, inspect
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -6,6 +27,7 @@ from datetime import datetime
 from validate_email import validate_email
 from webdriver_manager.chrome import ChromeDriverManager
 from linkedineasyapply import LinkedinEasyApply
+from email_notifier import check_email_replies, send_followup_emails
 def init_browser():
     browser_options = Options()
     options = [
@@ -139,20 +161,77 @@ def validate_yaml():
 
     return parameters
 
+def space_before_next():
+    """Function to keep the program running and wait before next iteration"""
+    print("\n⏸️  Waiting 5 minutes before next attempt...")
+    print(f"Current time: {datetime.now()}")
+    time.sleep(300)  # Wait 5 minutes
+
 if __name__ == '__main__':
-    parameters = validate_yaml()
-    browser = init_browser()
+    while True:  # Run indefinitely, restart on any error
+        try:
+            parameters = validate_yaml()
+            
+            # Check for replies to emails sent in last 3 hours
+            print("\n" + "="*60)
+            print("CHECKING EMAIL REPLIES")
+            print("="*60)
+            reply_status = check_email_replies(hours=3)
+            
+            # Send follow-up emails to those who didn't reply
+            if reply_status['no_reply']:
+                print("\n📤 Sending follow-up emails...")
+                # Group by position from CSV
+                import csv
+                from datetime import datetime, timedelta
+                
+                no_reply_by_position = {}
+                cutoff_time = datetime.now() - timedelta(hours=3)
+                
+                if os.path.exists('emails_output.csv'):
+                    with open('emails_output.csv', 'r', encoding='utf-8') as f:
+                        reader = csv.reader(f)
+                        next(reader, None)
+                        for row in reader:
+                            if len(row) >= 3:
+                                email_addr = row[0].lower()
+                                position = row[1]
+                                sent_time = datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S')
+                                
+                                if email_addr in reply_status['no_reply'] and sent_time >= cutoff_time:
+                                    if position not in no_reply_by_position:
+                                        no_reply_by_position[position] = []
+                                    no_reply_by_position[position].append(email_addr)
+                
+                # Send follow-ups grouped by position
+                for position, emails in no_reply_by_position.items():
+                    print(f"\n📋 Position: {position}")
+                    send_followup_emails(emails, position, parameters['personalInfo'])
+            
+            print("\n" + "="*60)
+            print("STARTING JOB SEARCH")
+            print("="*60)
+            
+            browser = init_browser()
 
-    bot = LinkedinEasyApply(parameters, browser)
-    bot.login()
-    bot.security_check()
-    while True:  # Run indefinitely
-        print("\n🔄 Running job application process...\n")
-        success = bot.start_applying()
-
-        if not success:  # If no more jobs found, wait & restart
-            print("\n❌ No jobs found sleeping for 10 minutes. Restarting process...\n")
-            print(datetime.now())
-            time.sleep(600)  # Wait 10 minutes
-        else:
-            print("\n✅ Jobs found and applied! Restarting process...\n")
+            bot = LinkedinEasyApply(parameters, browser)
+            bot.login()
+            bot.security_check()
+            bot.search_posts()  # Search for posts using keywords from positions list
+            
+            current_line = inspect.currentframe().f_lineno
+            print("\n✅ Job search completed successfully!")
+            print(f"📄 File: {__file__} | Line: {current_line}")
+            print("Program finished. Exiting...")
+            
+            # Close browser and exit
+            browser.quit()
+            break  # Exit the outer while loop
+                
+        except KeyboardInterrupt:
+            print("\n\n⛔ Program stopped by user.")
+            break
+        except Exception as e:
+            print(f"\n\n❌ Error occurred: {e}")
+            print("Restarting...\n")
+            space_before_next()
