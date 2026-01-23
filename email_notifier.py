@@ -13,9 +13,12 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
+from email.utils import make_msgid
 import os
 from datetime import datetime, timedelta
 import time
+import csv
+import hashlib
 
 
 def load_email_config():
@@ -29,7 +32,73 @@ def load_email_config():
         return None
 
 
-def send_email(to_email, subject, body, attachment_path=None):
+def load_blocklist():
+    """Load blocked emails and domains from blocklist/blocked_emails.txt"""
+    blocklist = set()
+    blocklist_file = "blocklist/blocked_emails.txt"
+    
+    if os.path.exists(blocklist_file):
+        try:
+            with open(blocklist_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    # Skip empty lines and comments
+                    if line and not line.startswith('#'):
+                        blocklist.add(line.lower())
+        except Exception as e:
+            print(f"⚠️ Error loading blocklist: {e}")
+    
+    return blocklist
+
+
+def add_to_blocklist(email_address, reason="Unreachable"):
+    """Add an email address to the blocklist"""
+    blocklist_file = "blocklist/blocked_emails.txt"
+    
+    # Check if already blocked
+    if is_email_blocked(email_address):
+        return False
+    
+    try:
+        with open(blocklist_file, 'a', encoding='utf-8') as f:
+            f.write(f"{email_address.lower()}  # Auto-blocked: {reason} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        print(f"🚫 Added to blocklist: {email_address} ({reason})")
+        return True
+    except Exception as e:
+        print(f"⚠️ Error adding to blocklist: {e}")
+        return False
+
+
+def is_email_blocked(email_address):
+    """Check if an email address is in the blocklist"""
+    blocklist = load_blocklist()
+    email_lower = email_address.lower()
+    
+    # Check exact match
+    if email_lower in blocklist:
+        return True
+    
+    # Check domain match (entries starting with @)
+    for blocked in blocklist:
+        if blocked.startswith('@') and email_lower.endswith(blocked):
+            return True
+        # Check if blocklist entry is a domain without @
+        if not blocked.startswith('@') and '@' not in blocked:
+            if email_lower.endswith('@' + blocked):
+                return True
+    
+    return False
+
+
+def generate_message_id(to_email, subject):
+    """Generate a unique Message-ID for email threading"""
+    # Create a deterministic message ID based on recipient and subject
+    unique_string = f"{to_email}_{subject}_{datetime.now().strftime('%Y%m%d')}"
+    hash_part = hashlib.md5(unique_string.encode()).hexdigest()[:16]
+    return make_msgid(domain="gmail.com", idstring=hash_part)
+
+
+def send_email(to_email, subject, body, attachment_path=None, message_id=None, in_reply_to=None, references=None):
     """
     Send an email using SMTP.
     
@@ -38,14 +107,17 @@ def send_email(to_email, subject, body, attachment_path=None):
         subject: Email subject
         body: Email body text
         attachment_path: Optional path to file attachment
+        message_id: Optional Message-ID for tracking
+        in_reply_to: Optional In-Reply-To header for threading
+        references: Optional References header for threading
     
     Returns:
-        bool: True if sent successfully, False otherwise
+        tuple: (success: bool, message_id: str)
     """
     config = load_email_config()
     if not config:
         print("❌ Failed to load email configuration")
-        return False
+        return False, None
     
     sender_email = config['sender_email']
     sender_password = config['sender_password']
@@ -58,6 +130,17 @@ def send_email(to_email, subject, body, attachment_path=None):
         msg['From'] = sender_email
         msg['To'] = to_email
         msg['Subject'] = subject
+        
+        # Generate or use provided Message-ID
+        if not message_id:
+            message_id = generate_message_id(to_email, subject)
+        msg['Message-ID'] = message_id
+        
+        # Add threading headers for follow-ups
+        if in_reply_to:
+            msg['In-Reply-To'] = in_reply_to
+        if references:
+            msg['References'] = references
         
         # Add body
         msg.attach(MIMEText(body, 'plain'))
@@ -81,11 +164,11 @@ def send_email(to_email, subject, body, attachment_path=None):
             server.send_message(msg)
         
         print(f"✅ Email sent successfully to {to_email}")
-        return True
+        return True, message_id
         
     except Exception as e:
         print(f"❌ Failed to send email to {to_email}: {e}")
-        return False
+        return False, None
 
 
 def send_bulk_emails(email_list, subject, body, attachment_path=None):
@@ -99,24 +182,44 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
         attachment_path: Optional path to file attachment
     
     Returns:
-        dict: Summary with 'sent' and 'failed' counts
+        dict: Summary with 'sent' and 'failed' counts, plus message_ids
     """
     sent_count = 0
     failed_count = 0
+    blocked_count = 0
+    message_ids = {}  # Store message IDs for threading
     
-    print(f"\n📧 Sending emails to {len(email_list)} recipient(s)...")
+    # Filter blocked emails
+    filtered_emails = []
+    for email_addr in email_list:
+        if is_email_blocked(email_addr):
+            print(f"🚫 Blocked: {email_addr}")
+            blocked_count += 1
+        else:
+            filtered_emails.append(email_addr)
     
-    for email in email_list:
-        if send_email(email, subject, body, attachment_path):
+    print(f"\n📧 Sending emails to {len(filtered_emails)} recipient(s)...")
+    if blocked_count > 0:
+        print(f"🚫 Blocked {blocked_count} email(s) via blocklist")
+    
+    for email_addr in filtered_emails:
+        success, msg_id = send_email(email_addr, subject, body, attachment_path)
+        if success:
             sent_count += 1
+            message_ids[email_addr] = msg_id
         else:
             failed_count += 1
     
     print(f"\n📊 Email Summary:")
     print(f"  ✅ Sent: {sent_count}")
     print(f"  ❌ Failed: {failed_count}")
+    if blocked_count > 0:
+        print(f"  🚫 Blocked: {blocked_count}")
     
-    return {'sent': sent_count, 'failed': failed_count}
+    # Save message IDs to file for threading
+    save_message_ids(message_ids)
+    
+    return {'sent': sent_count, 'failed': failed_count, 'blocked': blocked_count, 'message_ids': message_ids}
 
 
 def create_email_template(position, personal_info):
@@ -141,13 +244,13 @@ def create_email_template(position, personal_info):
     # Create email body
     body = f"""Hi,
 
-My name is {full_name}, and I am applying for the {position} position that you posted for C2C (Corp-to-Corp).
+Applying for {position} - C2C.
 
-I am interested in this opportunity and would like to discuss the details further. My expected pay rate is ${pay_rate}/hour.
+Location: Michigan, MI
+Open to relocation
+Rate: ${pay_rate}/hr
 
-I have attached my resume for your review. Please let me know if you need any additional information.
-
-Looking forward to hearing from you.
+Resume attached.
 
 Best regards,
 {full_name}"""
@@ -158,17 +261,18 @@ Best regards,
 def check_email_replies(hours=3):
     """
     Check Gmail inbox for replies to emails sent in the last X hours.
+    Also checks for bounce-back/undeliverable messages and adds to blocklist.
     
     Args:
         hours: How many hours back to check for sent emails
     
     Returns:
-        dict: {'replied': [emails], 'no_reply': [emails]}
+        dict: {'replied': [emails], 'no_reply': [emails], 'bounced': [emails]}
     """
     config = load_email_config()
     if not config:
         print("❌ Failed to load email configuration")
-        return {'replied': [], 'no_reply': []}
+        return {'replied': [], 'no_reply': [], 'bounced': []}
     
     sender_email = config['sender_email']
     sender_password = config['sender_password']
@@ -182,7 +286,6 @@ def check_email_replies(hours=3):
         imap.select('INBOX')
         
         # Get sent emails from CSV to check
-        import csv
         sent_emails = {}
         cutoff_time = datetime.now() - timedelta(hours=hours)
         
@@ -200,9 +303,71 @@ def check_email_replies(hours=3):
         print(f"\n📬 Checking replies for {len(sent_emails)} email(s) sent in last {hours} hours...")
         
         replied_emails = []
+        bounced_emails = []
+        
+        # Check for bounce-back emails
+        print("\n🔍 Checking for bounce-back messages...")
+        try:
+            # Search for common bounce indicators
+            bounce_searches = [
+                'FROM "mailer-daemon"',
+                'FROM "postmaster"',
+                'SUBJECT "Undelivered"',
+                'SUBJECT "Delivery Status Notification"',
+                'SUBJECT "Mail delivery failed"',
+                'SUBJECT "Returned mail"',
+                'SUBJECT "Address not found"',
+                'SUBJECT "Undeliverable"'
+            ]
+            
+            for search_term in bounce_searches:
+                _, bounce_ids = imap.search(None, search_term)
+                if bounce_ids[0]:
+                    for msg_id in bounce_ids[0].split():
+                        try:
+                            _, msg_data = imap.fetch(msg_id, '(RFC822)')
+                            email_message = email.message_from_bytes(msg_data[0][1])
+                            
+                            # Get the email body
+                            body = ""
+                            if email_message.is_multipart():
+                                for part in email_message.walk():
+                                    if part.get_content_type() == "text/plain":
+                                        body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                        break
+                            else:
+                                body = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
+                            
+                            # Extract bounced email addresses from body
+                            import re
+                            # Look for email patterns in bounce message
+                            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                            found_emails = re.findall(email_pattern, body)
+                            
+                            for found_email in found_emails:
+                                found_email_lower = found_email.lower()
+                                # Check if this email is in our sent list
+                                if found_email_lower in sent_emails and found_email_lower not in bounced_emails:
+                                    bounced_emails.append(found_email_lower)
+                                    print(f"  🔴 Bounced email detected: {found_email_lower}")
+                                    
+                                    # Add to blocklist
+                                    reason = "Undeliverable"
+                                    if "domain" in body.lower() and "couldn't be found" in body.lower():
+                                        reason = "Domain not found"
+                                    elif "address not found" in body.lower():
+                                        reason = "Address not found"
+                                    
+                                    add_to_blocklist(found_email_lower, reason)
+                        except Exception as e:
+                            print(f"  ⚠️ Error processing bounce message: {e}")
+        except Exception as e:
+            print(f"  ⚠️ Error checking bounces: {e}")
         
         # Search for emails from the addresses we sent to
         for email_addr in sent_emails.keys():
+            if email_addr in bounced_emails:
+                continue  # Skip if already identified as bounced
             try:
                 # Search for emails from this address
                 _, message_ids = imap.search(None, f'FROM "{email_addr}"')
@@ -220,30 +385,66 @@ def check_email_replies(hours=3):
                 print(f"  ⚠️ Error checking {email_addr}: {e}")
         
         # Determine who didn't reply
-        no_reply = [email for email in sent_emails.keys() if email not in replied_emails]
+        no_reply = [email for email in sent_emails.keys() 
+                   if email not in replied_emails and email not in bounced_emails]
         
         imap.close()
         imap.logout()
         
         print(f"\n📊 Reply Summary:")
         print(f"  ✅ Replied: {len(replied_emails)}")
+        print(f"  🔴 Bounced: {len(bounced_emails)}")
         print(f"  ⏳ No reply yet: {len(no_reply)}")
         
-        return {'replied': replied_emails, 'no_reply': no_reply}
+        return {'replied': replied_emails, 'no_reply': no_reply, 'bounced': bounced_emails}
         
     except Exception as e:
         print(f"❌ Error checking emails: {e}")
-        return {'replied': [], 'no_reply': []}
+        return {'replied': [], 'no_reply': [], 'bounced': []}
 
 
-def send_followup_emails(no_reply_emails, position, personal_info):
+def save_message_ids(message_ids):
+    """Save message IDs to file for email threading"""
+    message_ids_file = "message_ids.csv"
+    
+    try:
+        with open(message_ids_file, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            for email_addr, msg_id in message_ids.items():
+                writer.writerow([email_addr, msg_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+    except Exception as e:
+        print(f"⚠️ Error saving message IDs: {e}")
+
+
+def get_original_message_id(email_addr):
+    """Get the original message ID for an email address for threading"""
+    message_ids_file = "message_ids.csv"
+    
+    if not os.path.exists(message_ids_file):
+        return None
+    
+    try:
+        with open(message_ids_file, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if len(row) >= 2 and row[0].lower() == email_addr.lower():
+                    return row[1]  # Return the message ID
+    except Exception as e:
+        print(f"⚠️ Error reading message IDs: {e}")
+    
+    return None
+
+
+def send_followup_emails(no_reply_emails, position, personal_info, resume_path=None):
     """
     Send follow-up emails to contacts who haven't replied.
+    Uses threading headers to reply in the same email thread.
     
     Args:
         no_reply_emails: List of email addresses
         position: Job position
         personal_info: Personal information dict
+        resume_path: Optional path to resume file to attach
     """
     if not no_reply_emails:
         print("✅ No follow-up emails needed")
@@ -253,27 +454,59 @@ def send_followup_emails(no_reply_emails, position, personal_info):
     last_name = personal_info.get('Last Name', '')
     full_name = f"{first_name} {last_name}".strip()
     pay_rate = personal_info.get('ExpectedPayPerHour', 0)
+
+# Visa: H1B
+# Location: Dallas, TX
+# Open to relocation
+# Rate: ${pay_rate}/hr
     
     subject = f"Re: Application for {position} - C2C"
+
+
     
     body = f"""Hi,
 
-I wanted to follow up on my previous email regarding the {position} position.
+Following up on {position} - C2C.
 
-I'm very interested in this C2C opportunity and would appreciate the chance to discuss it further. My expected rate is ${pay_rate}/hour.
+Location: Michigan, MI
+Open to relocation
+Rate: ${pay_rate}/hr
 
-Please let me know if you need any additional information or would like to schedule a call.
-
-Thank you for your time.
+Resume attached. Happy to discuss.
 
 Best regards,
 {full_name}"""
     
-    print(f"\n📧 Sending follow-up emails to {len(no_reply_emails)} recipient(s)...")
+    # Filter blocked emails
+    filtered_emails = []
+    blocked_count = 0
+    for email_addr in no_reply_emails:
+        if is_email_blocked(email_addr):
+            print(f"🚫 Blocked: {email_addr}")
+            blocked_count += 1
+        else:
+            filtered_emails.append(email_addr)
+    
+    print(f"\n📧 Sending follow-up emails to {len(filtered_emails)} recipient(s)...")
+    if blocked_count > 0:
+        print(f"🚫 Blocked {blocked_count} email(s) via blocklist")
     
     sent_count = 0
-    for email_addr in no_reply_emails:
-        if send_email(email_addr, subject, body):
+    for email_addr in filtered_emails:
+        # Get original message ID for threading
+        original_msg_id = get_original_message_id(email_addr)
+        
+        # Send with threading headers and resume attachment
+        success, _ = send_email(
+            email_addr, 
+            subject, 
+            body,
+            attachment_path=resume_path,
+            in_reply_to=original_msg_id,
+            references=original_msg_id
+        )
+        
+        if success:
             sent_count += 1
     
     print(f"✅ Sent {sent_count} follow-up email(s)")

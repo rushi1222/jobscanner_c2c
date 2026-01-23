@@ -27,6 +27,7 @@ output.csv
 emails_output.csv
 email_template_*.txt
 *.log
+message_ids.csv
 
 # Resumes (personal documents)
 resumes/

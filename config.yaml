@@ -1,0 +1,465 @@
+# Add your LinkedIn email ID and password.
+# *** WARNING: KEEP THIS CONFIG OFFLINE ON YOUR PC AND DO NOT COMMIT/UPLOAD ***
+email: k.saieswar@gmail.com
+password: Pandu122@
+
+# Anti-lock default is False to prevent your PC from sleeping to
+# allow bot to run uninterrupted. Set it to True if you wish  to
+# disable this functionality.
+disableAntiLock: False
+
+# Set to True if you wish to search for remote jobs only.
+remote: False
+
+# Set to True if you wish to search for jobs marked as "under 10
+# applicants" (default is False).
+lessthanTenApplicants: True
+
+# Set to True or False to suit your preference. Multiple True allowed.
+experienceLevel:
+ internship: False
+ entry: True
+ associate: True
+ mid-senior level: False
+ director: False
+ executive: False
+
+# Set to True or False to suit your preference. Multiple True allowed.
+jobTypes:
+ full-time: True
+ contract: True
+ part-time: False
+ temporary: True
+ internship: False
+ other: False
+ volunteer: False
+
+# Set ONLY one as True to suit your preference.
+date:
+ all time: False
+ month: False
+ week: False
+ 24 hours: True
+
+sort_by:
+    relevance: False
+    date_posted: True
+
+# Resume mapping: position -> resume filename
+# Place resume files in 'resumes/' folder with these exact names
+resumeMapping:
+  Servicenow technical consultant c2c: service_now.docx
+  Lead Servicenow technical consultant c2c: service_now.docx
+  servicenow developer c2c: service_now.docx
+  servicenow admistrator c2c: service_now.docx
+
+
+# Remove hash sign to add positions. You can add as many as you need,
+# but preserve formatting
+positions:
+- Servicenow technical consultant c2c
+- Lead Servicenow technical consultant c2c
+- servicenow developer c2c
+- servicenow admistrator c2c
+
+# - dallas in-person react.js c2c
+# - frontend Developer in-person C2C
+# - full stack developer remote C2C
+# - react remote c2c
+
+
+# - frontend Developer NOT "Lensa" NOT "Jobot" NOT "Kiddom" NOT "HTC Global Services" NOT "Dice" NOT "Revature" NOT "Jobs via eFinancialCareers" NOT "Apex Systems" NOT TEKsystems NOT Modis NOT Experis NOT Collabera NOT "Insight Global" NOT "Robert Half Technology" NOT "Randstad Technologies" NOT Vaco NOT Synechron NOT "Mphasis Consulting Services" NOT Kforce
+# - Java Developer
+# - Software Engineer
+# - Backend Engineer
+
+# - ("frontend developer" NOT ("Jobs via Dice" OR "Highbrow LLC" OR "GrabCareers" OR "Jobs via Dice" OR "Sparq" OR "TieTalent" OR "vasu agency" OR "lensa" OR "jobot" OR "kiddom" OR "htc global services" OR "dice" OR "revature" OR "efinancialcareers" OR "apex systems" OR "teksystems" OR "modis" OR "experis" OR "collabera" OR "insight global" OR "robert half technology" OR "randstad technologies" OR "vaco" OR "synechron" OR "mphasis consulting services" OR "kforce" OR "hiring agency" OR "staffing agency" OR "consulting firm" OR "recruitment" OR "recruiter"))
+# - ("react.js developer" NOT ("Jobs via Dice" OR "Highbrow LLC" OR "GrabCareers" OR "Jobs via Dice" OR "Sparq" OR "TieTalent" OR "vasu agency" OR "lensa" OR "jobot" OR "kiddom" OR "htc global services" OR "dice" OR "revature" OR "efinancialcareers" OR "apex systems" OR "teksystems" OR "modis" OR "experis" OR "collabera" OR "insight global" OR "robert half technology" OR "randstad technologies" OR "vaco" OR "synechron" OR "mphasis consulting services" OR "kforce" OR "hiring agency" OR "staffing agency" OR "consulting firm" OR "recruitment" OR "recruiter"))
+# - ("FullStack developer" NOT ("Jobs via Dice" OR "Highbrow LLC" OR "GrabCareers" OR "Jobs via Dice" OR "Sparq" OR "TieTalent" OR "vasu agency" OR "lensa" OR "jobot" OR "kiddom" OR "htc global services" OR "dice" OR "revature" OR "efinancialcareers" OR "apex systems" OR "teksystems" OR "modis" OR "experis" OR "collabera" OR "insight global" OR "robert half technology" OR "randstad technologies" OR "vaco" OR "synechron" OR "mphasis consulting services" OR "kforce" OR "hiring agency" OR "staffing agency" OR "consulting firm" OR "recruitment" OR "recruiter"))
+# - ("GenAI engineer NOT" NOT ("Jobs via Dice" OR "Highbrow LLC" OR "GrabCareers" OR "Jobs via Dice" OR "Sparq" OR "TieTalent" OR "vasu agency" OR "lensa" OR "jobot" OR "kiddom" OR "htc global services" OR "dice" OR "revature" OR "efinancialcareers" OR "apex systems" OR "teksystems" OR "modis" OR "experis" OR "collabera" OR "insight global" OR "robert half technology" OR "randstad technologies" OR "vaco" OR "synechron" OR "mphasis consulting services" OR "kforce" OR "hiring agency" OR "staffing agency" OR "consulting firm" OR "recruitment" OR "recruiter"))
+# - ("javascript developer" OR "UI developer" OR "UX developer" OR "UI/UX developer") NOT ("Jobs via Dice" OR "Highbrow LLC" OR "GrabCareers" OR "Jobs via Dice" OR "Sparq" OR "TieTalent" OR "vasu agency" OR "lensa" OR "jobot" OR "kiddom" OR "htc global services" OR "dice" OR "revature" OR "efinancialcareers" OR "apex systems" OR "teksystems" OR "modis" OR "experis" OR "collabera" OR "insight global" OR "robert half technology" OR "randstad technologies" OR "vaco" OR "synechron" OR "mphasis consulting services" OR "kforce" OR "hiring agency" OR "staffing agency" OR "consulting firm" OR "recruitment" OR "recruiter")
+# - ("data engineer") NOT ("Jobs via Dice" OR "Highbrow LLC" OR "GrabCareers" OR "Jobs via Dice" OR "Sparq" OR "TieTalent" OR "vasu agency" OR "lensa" OR "jobot" OR "kiddom" OR "htc global services" OR "dice" OR "revature" OR "efinancialcareers" OR "apex systems" OR "teksystems" OR "modis" OR "experis" OR "collabera" OR "insight global" OR "robert half technology" OR "randstad technologies" OR "vaco" OR "synechron" OR "mphasis consulting services" OR "kforce" OR "hiring agency" OR "staffing agency" OR "consulting firm" OR "recruitment" OR "recruiter")
+# - Fullstack Developer
+ #- First position
+ #- A second position
+ #- A third position
+ #- ...
+# - ("mobile developer" OR "iOS developer" OR "android developer" OR "mobile application developer") NOT ("Jobs via Dice" OR "GrabCareers" OR "Jobs via Dice" OR "Sparq" OR "TieTalent" OR "vasu agency" OR "lensa" OR "jobot" OR "kiddom" OR "htc global services" OR "dice" OR "revature" OR "efinancialcareers" OR "apex systems" OR "teksystems" OR "modis" OR "experis" OR "collabera" OR "insight global" OR "robert half technology" OR "randstad technologies" OR "vaco" OR "synechron" OR "mphasis consulting services" OR "kforce" OR "hiring agency" OR "staffing agency" OR "consulting firm" OR "recruitment" OR "recruiter")
+# Remove hash sign to add locations. You can add as many as you need
+# including adding 'Remote' as a location but first location must be
+# a valid country.
+locations:
+- United States
+# - Seattle, Washington, United States
+# - New York, United States
+# - New Jersey, United States
+# - Canada
+
+ #- A second location
+ #- A third location
+ #- ...
+#  - Remote
+
+# Set to True if you are residing in the country of job
+residentStatus: False
+
+# Distance from the location added above. Allowed values are
+# {0, 5, 10, 25, 50, 100}, use only one.
+distance: 100
+
+# Optional directory to save logs, does not work sometimes.
+# Does not work sometimes, so leave it unchanged.
+outputFileDirectory: ~/Documents/Applications/EasyApplyBot/EasyApplyBot/
+
+# Companies you don't want to apply.
+companyBlacklist:
+ #- company
+ #- company2
+
+# Job titles you want to avoid applying. Use it to refine performance of bot.
+titleBlacklist:
+ #- word1
+ #- word2
+
+# Bot will not apply to jobs posted by black listed people.
+posterBlacklist:
+ #- name1
+ #- name2
+
+# Path to your CV/resume and cover letter (remove hash sign). These
+# paths often don't work so apply one job manually once,  bot will
+# reuse manually uploaded CV for automating the task. Note: Prefer
+# a path without spaces, i.e. instead of "Me My" to "MeMy" or "Me_My".
+uploads:
+ resume: C:\Users\myDirectory\Resume.pdf
+ # Cover letter is optional
+ #coverLetter: C:\Users\myDirectory\CoverLettter.pdf
+
+
+# ------------ QA section -------------------
+
+# ------------ Additional parameters: checkboxes ---------------
+checkboxes:
+ # Do you have a valid driver's license? (yes/no checkbox)
+ driversLicence: True
+ # Will you now, or in the future, require sponsorship for
+ # employment visa status (e.g. H-1B visa status)? (yes/no checkbox)
+ # This is relative to the location and your citizenship applying
+ # above, and same with legallyAuthorized.
+ requireVisa: False
+ # Are you legally authorized to work in COUNTRY? (yes/no checkbox)
+ legallyAuthorized: True
+ # Do you have necessary licenses or certifications required in your
+ # profession? E.g. CPA, CA, CFA, professional license
+ certifiedProfessional: True
+ # We must fill this position urgently. Can you start immediately?
+ # (yes/no checkbox)
+ urgentFill: True
+ # Are you comfortable commuting or work on-site to this job's location?
+ # (yes/no checkbox)
+ commute: True
+ # Are you comfortable working in a remote environment? (yes/no checkbox)
+ remote: True
+ # Are you comfortable taking a drug in accordance with local/state laws?
+ # (yes/no checkbox)
+ drugTest: True
+ # Are you willing to complete an assessment? (yes/no checkbox)
+ assessment: True
+ # Do you have security clearance of [xxx] country? (yes/no checkbox)
+ securityClearance: False
+
+ French: True
+ # Have you completed the following level of education: DEGREE TYPE? Remove
+ # applicable # signs (yes/no checkbox)
+ degreeCompleted:
+  # - High School Diploma
+  # - Bachelor's Degree
+  # - Associate's Degree
+  - Master's Degree
+  # - Master of Business Administration
+  # - Doctor of Philosophy
+  # - Doctor of Medicine
+  # - Doctor of Law
+ # Are you willing to undergo a background check, in accordance with local
+ # law/regulations?
+ backgroundCheck: True
+ functionalDeviceBrowserTesting: False  # Example for functional, device, and browser testing
+ localToPA: False  # Example for being local to PA
+ fullTimeNoSponsorship: True  # Example for full-time role without sponsorship
+ readyToWorkOnW2: True  # Example for W2 work
+
+# ------------ Additional parameters: universityGpa ---------------
+universityGpa: 3.7
+
+# ------------ Additional parameters: salaryMinimum ---------------
+# Set to 0 to disable salary filtering
+salaryMinimum: 0
+
+# ------------ Additional parameters: languages ---------------
+languages:
+ english: Native or bilingual # Allowed choices { None, Conversational, Professional, Native or bilingual }
+ # arabic:
+ # french:
+
+# ------------ Additional parameters: noticePeriod in weeks ---------------
+noticePeriod: 1
+
+# ------------ title ---------------------
+title:
+  - Frontend
+  - React
+  - Backend
+  - Fullstack
+  - Senior
+  - Software
+  - Web
+  - Webdeveloper
+  - UX
+  - UI
+  - UI/UX
+  - UX/UI
+  - Full stack
+  - Web Development
+  - Web
+  - Angular
+  - Data Engineer
+  - Data
+  - Data Science
+  - Data Scientist
+  - Data Engineer
+  - Data Engineering
+
+
+# ------------ Additional parameters: years of experience ---------------
+# How many years of work experience do you have ...? (whole numbers only).
+# You may add more skills depending on your industry or profession at the bottom.
+# Use `unprepared questions.csv` to add more depending on your use case.
+experience:
+ # normal ones
+ Accounting/Auditing: 0
+ Administrative : 0
+ Advertising : 0
+ Analyst : 0
+ Art/Creative: 0
+ Business Development: 0
+ Consulting: 0
+ Customer Service: 0
+ Distribution Design: 0
+ Education: 0
+ Engineering: 0
+ Finance: 0
+ General Business: 0
+ Health Care Provider: 0
+ Human Resources: 0
+ Information Technology: 0
+ Legal: 0
+ Management: 0
+ Manufacturing: 0
+ Marketing: 0
+ Public Relations: 0
+ Purchasing: 0
+ Product Management: 0
+ Project Management: 0
+ Production: 0
+ Quality Assurance: 0
+ Research: 0
+ Sales: 0
+ Science: 0
+ Strategy/Planning: 0
+ Supply Chain: 0
+ Training: 0
+ Writing/Editing: 0
+ VBA: 0
+ PowerBI: 0
+ PowerQuery: 0
+ Excel: 0
+ PowerPoint: 0
+ Word: 0
+ SQL Server: 0
+ Communication: 0
+ Financial markets: 0
+ Business: 0
+ Financial services: 0
+ Team leadership: 2
+ Cash flow: 0
+ Hedging: 0
+ Treasury services: 0
+ Microsoft Power BI: 0
+ Accounting: 0
+ Auditing: 0
+ Financial modeling: 0
+ Budgeting & forecasting: 0
+ FP&A: 0
+ PQE: 0
+ Training & Development: 0
+ Software Development: 8
+ Frontend Development: 8
+ Frontend: 8
+ Frontend Engineer: 8
+ Javascript: 8
+ Typescript: 6
+ AWS: 8
+ Azure: 2
+ Java: 2
+ NodeJS: 4
+ PHP: 2
+ WebDevelopment: 8
+ ProductDevelopmentLeadRole: 2
+ FullStackDevelopment: 8
+ FullStack: 8
+ OAuth2: 2
+ ReactReduxPython: 8
+ Spring: 2
+ PostgreSQL: 2
+ MySQL: 2
+ React: 8
+ Auditing: 0
+ MongoDB: 8
+ NoSQL: 8
+ Angular: 8
+ CSS: 8
+ Redux.js: 8
+ iOS: 1
+ Android: 1
+ PeopleSoft: 0
+ PeopleTools: 0
+ SQR: 0
+ HTML: 5
+ Bootstrap: 3
+ Mobile Applications: 2
+ Microsoft 365: 2
+ Kotlin: 2
+ Android Jetpack: 1
+ Debugging: 3
+ Microservices: 2
+ Python: 3
+ AEM: 0
+ Maven: 2
+ Databases: 8
+ Relational Databases: 8
+ Hibernate: 8
+ Fastlane: 8
+ REST: 8
+ Servlets: 8
+ JSON: 8
+ RPG: 0
+ Application Development: 8
+ CI/CD: 8
+ CNC: 0
+ Programming: 8
+ Machine Tools: 0
+ Engineering : 8
+ sql: 8
+ GraphQL: 4
+ django: 4
+ Redux: 8
+ NgRx: 8
+ AngularJS: 8
+ Angular 2: 8
+ Angular 4: 8
+ Angular 5: 8
+ Angular 6: 8
+ Angular 7: 8
+ Angular 8: 8
+ Angular 9: 8
+ Angular 10: 8
+ Angular 11: 8
+ Angular 12: 8
+ Angular 13: 8
+ Angular 14: 8
+ Angular 15: 8
+ Angular 16: 8
+ Angular 17: 8
+ Angular 18: 8
+ Dependency Injection: 8
+ RxJS: 8
+ Ngrx: 8
+ Angular Material: 8
+ Angular Flex Layout: 8
+ Angular Universal: 8
+ Angular Elements: 8
+ unit testing: 8
+ W2: True
+ SQL: 8
+ Objective-C: 8
+ Django: 8
+ GraphQL: 8
+ Web Content Accessibility Guidelines (WCAG): 8
+ ADA Compliance: 8
+ Node.js: 8
+ Backbone.js: 8
+ Vue.js: 8
+ C# in .NET: 8
+ C++: 8
+ Microservices: 8
+ Software design: 8
+ Visual C++: 8
+ PropTech: 8
+ Event-driven architectures: 8
+ XML: 8
+ Webpack: 8
+ User Interface (UI) Design: 8
+ User Experience (UX): 8
+ Flutter: 8
+ API development: 8
+ RDBMS: 8
+ Unix: 8
+ ASP.NET: 8
+ .NET Core: 8
+ Full-Stack Development: 8
+ Machine Learning: 8
+ Data Visualization: 8
+ RxJS: 8
+ Firebase: 8
+ Jakarta EE: 8
+ Laravel: 8
+ SOAP: 8
+ SAP: 8
+ OpenShift: 8
+ Retool: 8
+ TypeScript: 8
+ Adobe Experience Platform (AEP): 8
+ Amazon Web Services (AWS): 8
+ Figma: 8
+ Routers: 8
+ Eclipse: 8
+ Firmware/Embedded systems: 8
+ Front-End Development: 8
+ Artificial Intelligence (AI): 8
+ MobX: 8
+ LLMs (Large Language Models): 8
+ JBoss Application Server: 8
+ #python: 0
+ #selenium: 0
+ # default to put for any industry/skill that you did not list
+ default: 8
+
+# ------------ Additional parameters: personal info ---------------
+personalInfo:
+ Pronouns: Mr.
+ First Name: Murali
+ Last Name: K
+ Phone Country Code: USA (+1) # See Linkedin for your country code, must be exact according to the international platform, i.e. Italy (+39) not Italia (+39)
+ Mobile Phone Number: 2017411028
+ Street address: 6701 S CUSTER ROAD
+ City: Mckinney # Include the state/province as well!
+ State: Texas
+ Zip: 75070
+ Linkedin: https://www.linkedin.com/in/rushideep/
+ Website: https://github.com/rushi1222 # github/website is interchangeable here
+ MessageToManager: "Hi, I am interested to join your organization. Please have a look at my resume. Thank you." # Keep message short and within the quotes. This is a testing feature and may not work.
+ ExpectedPayPerHour: 60-70 # Leave it as 0 if you don't want to specify
+
+# ------------ Additional parameters: USA employment crap ---------------
+eeo:
+ gender: Male
+ race: Asian
+ veteran: No
+ disability: No
+ citizenship: No
+ clearance: Yes
+
+W2: True
+office: True
+
+

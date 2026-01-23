@@ -204,9 +204,10 @@ if __name__ == '__main__':
                                     no_reply_by_position[position].append(email_addr)
                 
                 # Send follow-ups grouped by position
+                resume_path = parameters.get('uploads', {}).get('resume', None)
                 for position, emails in no_reply_by_position.items():
                     print(f"\n📋 Position: {position}")
-                    send_followup_emails(emails, position, parameters['personalInfo'])
+                    send_followup_emails(emails, position, parameters['personalInfo'], resume_path)
             
             print("\n" + "="*60)
             print("STARTING JOB SEARCH")
