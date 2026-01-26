@@ -20,6 +20,10 @@ ChromeFeatureState
 *.json
 
 # Configs
+email.yaml
+config.yaml
+
+
 
 # Output files with sensitive data
 *.log
