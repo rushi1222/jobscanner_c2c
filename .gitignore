@@ -28,6 +28,7 @@ email.yaml
 emails_output.csv
 blocklist/blocked_emails.txt
 blocked_emails.txt
+email_notifier.py
 
 
 # Resumes (personal documents)
