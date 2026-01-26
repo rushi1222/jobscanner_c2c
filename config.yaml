@@ -48,24 +48,19 @@ sort_by:
 # Resume mapping: position -> resume filename
 # Place resume files in 'resumes/' folder with these exact names
 resumeMapping:
-  Servicenow technical consultant c2c: service_now.docx
-  Lead Servicenow technical consultant c2c: service_now.docx
-  servicenow developer c2c: service_now.docx
-  servicenow admistrator c2c: service_now.docx
+  dallas in-person react.js c2c: sai_kotamraju.docx
+  frontend Developer in-person C2C: sai_kotamraju.docx
+  full stack developer remote C2C: sai_kotamraju.docx
+  react remote c2c: sai_kotamraju.docx
 
 
 # Remove hash sign to add positions. You can add as many as you need,
 # but preserve formatting
 positions:
-- Servicenow technical consultant c2c
-- Lead Servicenow technical consultant c2c
-- servicenow developer c2c
-- servicenow admistrator c2c
-
-# - dallas in-person react.js c2c
-# - frontend Developer in-person C2C
-# - full stack developer remote C2C
-# - react remote c2c
+- dallas in-person react.js c2c
+- frontend Developer in-person C2C
+- full stack developer remote C2C
+- react remote c2c
 
 
 # - frontend Developer NOT "Lensa" NOT "Jobot" NOT "Kiddom" NOT "HTC Global Services" NOT "Dice" NOT "Revature" NOT "Jobs via eFinancialCareers" NOT "Apex Systems" NOT TEKsystems NOT Modis NOT Experis NOT Collabera NOT "Insight Global" NOT "Robert Half Technology" NOT "Randstad Technologies" NOT Vaco NOT Synechron NOT "Mphasis Consulting Services" NOT Kforce
@@ -437,8 +432,8 @@ experience:
 # ------------ Additional parameters: personal info ---------------
 personalInfo:
  Pronouns: Mr.
- First Name: Murali
- Last Name: K
+ First Name: Sai
+ Last Name: Kotamraju
  Phone Country Code: USA (+1) # See Linkedin for your country code, must be exact according to the international platform, i.e. Italy (+39) not Italia (+39)
  Mobile Phone Number: 2017411028
  Street address: 6701 S CUSTER ROAD

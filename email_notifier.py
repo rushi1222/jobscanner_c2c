@@ -246,9 +246,10 @@ def create_email_template(position, personal_info):
 
 Applying for {position} - C2C.
 
-Location: Michigan, MI
-Open to relocation
-Rate: ${pay_rate}/hr
+# Visa: H1B
+# Location: Dallas, TX
+# Open to relocation
+# Rate: ${pay_rate}/hr
 
 Resume attached.
 
@@ -467,11 +468,9 @@ def send_followup_emails(no_reply_emails, position, personal_info, resume_path=N
     body = f"""Hi,
 
 Following up on {position} - C2C.
-
 # Visa: H1B
 # Location: Dallas, TX
 # Open to relocation
-# Rate: ${pay_rate}/hr
 # Rate: ${pay_rate}/hr
 
 Resume attached. Happy to discuss.
