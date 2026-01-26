@@ -24,6 +24,11 @@ ChromeFeatureState
 # Output files with sensitive data
 *.log
 message_ids.csv
+email.yaml
+emails_output.csv
+blocklist/blocked_emails.txt
+blocked_emails.txt
+
 
 # Resumes (personal documents)
 resumes/
