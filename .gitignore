@@ -20,12 +20,8 @@ ChromeFeatureState
 *.json
 
 # Configs
-email.yaml
 
 # Output files with sensitive data
-output.csv
-emails_output.csv
-email_template_*.txt
 *.log
 message_ids.csv
 

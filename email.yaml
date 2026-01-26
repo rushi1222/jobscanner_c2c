@@ -1,0 +1,11 @@
+email_settings:
+  sender_email: "k.saieswar1222@gmail.com"
+  #saieswar
+  sender_password: "rjre sodc zvfm jhye" 
+  #k.saraswathi1222@
+  # sender_password: "mhzm dkyw bcdm hwdt"
+  #murali123@
+  # sender_password:  jlbd jkpx phxc neiz
+  receiver_email: "k.saieswar1222@gmail.com"
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
