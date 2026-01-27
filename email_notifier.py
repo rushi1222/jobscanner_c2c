@@ -187,20 +187,26 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
     sent_count = 0
     failed_count = 0
     blocked_count = 0
+    gmail_count = 0
     message_ids = {}  # Store message IDs for threading
     
-    # Filter blocked emails
+    # Filter blocked emails and Gmail addresses
     filtered_emails = []
     for email_addr in email_list:
         if is_email_blocked(email_addr):
             print(f"🚫 Blocked: {email_addr}")
             blocked_count += 1
+        elif "@gmail.com" in email_addr.lower():
+            print(f"📧 Skipped (Gmail): {email_addr}")
+            gmail_count += 1
         else:
             filtered_emails.append(email_addr)
     
     print(f"\n📧 Sending emails to {len(filtered_emails)} recipient(s)...")
     if blocked_count > 0:
         print(f"🚫 Blocked {blocked_count} email(s) via blocklist")
+    if gmail_count > 0:
+        print(f"📧 Skipped {gmail_count} Gmail email(s)")
     
     for email_addr in filtered_emails:
         success, msg_id = send_email(email_addr, subject, body, attachment_path)
@@ -215,11 +221,13 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
     print(f"  ❌ Failed: {failed_count}")
     if blocked_count > 0:
         print(f"  🚫 Blocked: {blocked_count}")
+    if gmail_count > 0:
+        print(f"  📧 Gmail skipped: {gmail_count}")
     
     # Save message IDs to file for threading
     save_message_ids(message_ids)
     
-    return {'sent': sent_count, 'failed': failed_count, 'blocked': blocked_count, 'message_ids': message_ids}
+    return {'sent': sent_count, 'failed': failed_count, 'blocked': blocked_count, 'gmail_skipped': gmail_count, 'message_ids': message_ids}
 
 
 def create_email_template(position, personal_info):
@@ -509,19 +517,25 @@ Resume attached. Happy to discuss.
 Best regards,
 {full_name}"""
     
-    # Filter blocked emails
+    # Filter blocked emails and Gmail addresses
     filtered_emails = []
     blocked_count = 0
+    gmail_count = 0
     for email_addr in no_reply_emails:
         if is_email_blocked(email_addr):
             print(f"🚫 Blocked: {email_addr}")
             blocked_count += 1
+        elif "@gmail.com" in email_addr.lower():
+            print(f"📧 Skipped (Gmail): {email_addr}")
+            gmail_count += 1
         else:
             filtered_emails.append(email_addr)
     
     print(f"\n📧 Sending follow-up emails to {len(filtered_emails)} recipient(s)...")
     if blocked_count > 0:
         print(f"🚫 Blocked {blocked_count} email(s) via blocklist")
+    if gmail_count > 0:
+        print(f"📧 Skipped {gmail_count} Gmail email(s)")
     
     sent_count = 0
     for email_addr in filtered_emails:
