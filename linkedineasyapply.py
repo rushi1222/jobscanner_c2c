@@ -250,11 +250,11 @@ class LinkedinEasyApply:
                 
                 # Write header if file doesn't exist
                 if not file_exists:
-                    writer.writerow(["Email", "Position", "Date/Time"])
+                    writer.writerow(["Email", "Position", "Date/Time", "Message-ID"])
                 
-                # Write each new email
+                # Write each new email (message_id will be added later when email is sent)
                 for email in new_emails:
-                    writer.writerow([email, position, current_datetime])
+                    writer.writerow([email, position, current_datetime, ""])
                     print(f"  📝 Logged: {email}")
             
             print(f"\n✅ Saved {len(new_emails)} new email(s) to {output_file}")
