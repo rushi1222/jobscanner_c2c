@@ -405,31 +405,62 @@ def check_email_replies(hours=3):
 
 
 def save_message_ids(message_ids):
-    """Save message IDs to file for email threading"""
-    message_ids_file = "message_ids.csv"
+    """Update emails_output.csv with message IDs for email threading"""
+    output_file = "emails_output.csv"
+    
+    if not os.path.exists(output_file):
+        return
     
     try:
-        with open(message_ids_file, 'a', newline='', encoding='utf-8') as f:
+        # Read all existing rows
+        rows = []
+        with open(output_file, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            header = next(reader, None)
+            
+            # Ensure header has Message-ID column
+            if header and "Message-ID" not in header:
+                header.append("Message-ID")
+            
+            rows.append(header)
+            
+            # Read all rows and update message IDs
+            for row in reader:
+                # Ensure row has 4 columns
+                while len(row) < 4:
+                    row.append("")
+                
+                email_addr = row[0]
+                # Update message ID if this email was just sent
+                if email_addr in message_ids:
+                    row[3] = message_ids[email_addr]  # Update Message-ID column
+                
+                rows.append(row)
+        
+        # Write back all rows
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            for email_addr, msg_id in message_ids.items():
-                writer.writerow([email_addr, msg_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+            writer.writerows(rows)
+            
     except Exception as e:
         print(f"⚠️ Error saving message IDs: {e}")
 
 
 def get_original_message_id(email_addr):
     """Get the original message ID for an email address for threading"""
-    message_ids_file = "message_ids.csv"
+    output_file = "emails_output.csv"
     
-    if not os.path.exists(message_ids_file):
+    if not os.path.exists(output_file):
         return None
     
     try:
-        with open(message_ids_file, 'r', encoding='utf-8') as f:
+        with open(output_file, 'r', encoding='utf-8') as f:
             reader = csv.reader(f)
+            next(reader, None)  # Skip header
             for row in reader:
-                if len(row) >= 2 and row[0].lower() == email_addr.lower():
-                    return row[1]  # Return the message ID
+                # Check if email matches and has a message ID (column index 3)
+                if len(row) >= 4 and row[0].lower() == email_addr.lower() and row[3]:
+                    return row[3]  # Return the message ID
     except Exception as e:
         print(f"⚠️ Error reading message IDs: {e}")
     
