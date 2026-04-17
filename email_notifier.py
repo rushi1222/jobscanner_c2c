@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 import time
 import csv
 import hashlib
+from email_rate_limiter import EmailRateLimiter
 
 
 def load_email_config():
@@ -173,7 +174,7 @@ def send_email(to_email, subject, body, attachment_path=None, message_id=None, i
 
 def send_bulk_emails(email_list, subject, body, attachment_path=None):
     """
-    Send the same email to multiple recipients.
+    Send the same email to multiple recipients with rate limiting.
     
     Args:
         email_list: List of recipient email addresses
@@ -188,7 +189,11 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
     failed_count = 0
     blocked_count = 0
     gmail_count = 0
+    rate_limited_count = 0
     message_ids = {}  # Store message IDs for threading
+    
+    # Initialize rate limiter
+    rate_limiter = EmailRateLimiter()
     
     # Filter blocked emails and Gmail addresses
     filtered_emails = []
@@ -202,32 +207,102 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
         else:
             filtered_emails.append(email_addr)
     
-    print(f"\n📧 Sending emails to {len(filtered_emails)} recipient(s)...")
+    print(f"\n📧 Starting rate-limited email sending to {len(filtered_emails)} recipient(s)...")
     if blocked_count > 0:
         print(f"🚫 Blocked {blocked_count} email(s) via blocklist")
     if gmail_count > 0:
         print(f"📧 Skipped {gmail_count} Gmail email(s)")
     
-    for email_addr in filtered_emails:
-        success, msg_id = send_email(email_addr, subject, body, attachment_path)
-        if success:
-            sent_count += 1
-            message_ids[email_addr] = msg_id
-        else:
-            failed_count += 1
+    # Display rate limiter status
+    status = rate_limiter.get_status()
+    print(f"📊 Rate Limiter Status: {status['daily_sent']}/{status['daily_limit']} daily | {status['hourly_sent']}/{status['hourly_limit']} hourly")
     
-    print(f"\n📊 Email Summary:")
+    for i, email_addr in enumerate(filtered_emails):
+        try:
+            # Check if we can send email
+            can_send, reason = rate_limiter.can_send_email()
+            
+            if not can_send:
+                print(f"\n⚠️  Rate limit reached: {reason}")
+                
+                if "Daily limit" in reason:
+                    print(f"📅 Daily limit reached. Stopping for today.")
+                    reset_info = rate_limiter.get_next_reset_time()
+                    print(f"📅 Next reset in: {reset_info['daily_reset']}")
+                    break
+                    
+                elif "Hourly limit" in reason:
+                    print(f"⏰ Hourly limit reached. Waiting 1 hour...")
+                    reset_info = rate_limiter.get_next_reset_time()
+                    print(f"⏰ Next hourly reset in: {reset_info['hourly_reset']}")
+                    time.sleep(3600)  # Wait 1 hour
+                    continue
+                    
+                elif "Burst limit" in reason:
+                    print(f"💥 Burst limit reached. Taking a 5-minute break...")
+                    rate_limiter.wait_if_needed()  # This handles burst cooldown
+                    continue
+                    
+                rate_limited_count += 1
+                continue
+            
+            # Apply rate limiting delay
+            rate_limiter.wait_if_needed()
+            
+            print(f"📧 [{i+1}/{len(filtered_emails)}] Sending to: {email_addr}")
+            
+            # Send the email
+            success, msg_id = send_email(email_addr, subject, body, attachment_path)
+            
+            if success:
+                sent_count += 1
+                message_ids[email_addr] = msg_id
+                rate_limiter.record_email_sent()
+                
+                # Show progress every 5 emails
+                if sent_count % 5 == 0:
+                    current_status = rate_limiter.get_status()
+                    print(f"📈 Progress: {sent_count} sent | Daily: {current_status['daily_sent']}/{current_status['daily_limit']} | Hourly: {current_status['hourly_sent']}/{current_status['hourly_limit']}")
+                    
+            else:
+                failed_count += 1
+                # Add failed email to blocklist if it bounced
+                add_to_blocklist(email_addr, "Send failed")
+                
+        except KeyboardInterrupt:
+            print(f"\n⛔ Email sending interrupted by user")
+            break
+        except Exception as e:
+            print(f"❌ Error sending email to {email_addr}: {e}")
+            failed_count += 1
+            # Wait a bit on error to avoid rapid failures
+            time.sleep(30)
+    
+    print(f"\n📊 Email Sending Summary:")
     print(f"  ✅ Sent: {sent_count}")
     print(f"  ❌ Failed: {failed_count}")
     if blocked_count > 0:
         print(f"  🚫 Blocked: {blocked_count}")
     if gmail_count > 0:
         print(f"  📧 Gmail skipped: {gmail_count}")
+    if rate_limited_count > 0:
+        print(f"  ⏱️  Rate limited: {rate_limited_count}")
+    
+    # Final rate limiter status
+    final_status = rate_limiter.get_status()
+    print(f"📊 Final Status: {final_status['daily_sent']}/{final_status['daily_limit']} daily emails used")
     
     # Save message IDs to file for threading
     save_message_ids(message_ids)
     
-    return {'sent': sent_count, 'failed': failed_count, 'blocked': blocked_count, 'gmail_skipped': gmail_count, 'message_ids': message_ids}
+    return {
+        'sent': sent_count, 
+        'failed': failed_count, 
+        'blocked': blocked_count, 
+        'gmail_skipped': gmail_count, 
+        'rate_limited': rate_limited_count,
+        'message_ids': message_ids
+    }
 
 
 def create_email_template(position, personal_info):
@@ -477,7 +552,7 @@ def get_original_message_id(email_addr):
 
 def send_followup_emails(no_reply_emails, position, personal_info, resume_path=None):
     """
-    Send follow-up emails to contacts who haven't replied.
+    Send follow-up emails to contacts who haven't replied with RATE LIMITING.
     Uses threading headers to reply in the same email thread.
     
     Args:
@@ -490,19 +565,15 @@ def send_followup_emails(no_reply_emails, position, personal_info, resume_path=N
         print("✅ No follow-up emails needed")
         return
     
+    # Initialize rate limiter for follow-ups
+    rate_limiter = EmailRateLimiter()
+    
     first_name = personal_info.get('First Name', 'Your Name')
     last_name = personal_info.get('Last Name', '')
     full_name = f"{first_name} {last_name}".strip()
     pay_rate = personal_info.get('ExpectedPayPerHour', 0)
-
-# Visa: H1B
-# Location: Dallas, TX
-# Open to relocation
-# Rate: ${pay_rate}/hr
     
     subject = f"Re: Application for {position} - C2C"
-
-
     
     body = f"""Hi,
 
@@ -531,31 +602,98 @@ Best regards,
         else:
             filtered_emails.append(email_addr)
     
-    print(f"\n📧 Sending follow-up emails to {len(filtered_emails)} recipient(s)...")
+    print(f"\n📧 Sending RATE-LIMITED follow-up emails to {len(filtered_emails)} recipient(s)...")
     if blocked_count > 0:
         print(f"🚫 Blocked {blocked_count} email(s) via blocklist")
     if gmail_count > 0:
         print(f"📧 Skipped {gmail_count} Gmail email(s)")
     
-    sent_count = 0
-    for email_addr in filtered_emails:
-        # Get original message ID for threading
-        original_msg_id = get_original_message_id(email_addr)
-        
-        # Send with threading headers and resume attachment
-        success, _ = send_email(
-            email_addr, 
-            subject, 
-            body,
-            attachment_path=resume_path,
-            in_reply_to=original_msg_id,
-            references=original_msg_id
-        )
-        
-        if success:
-            sent_count += 1
+    # Show initial rate limiter status
+    status = rate_limiter.get_status()
+    print(f"📊 Follow-up Rate Status: {status['daily_sent']}/{status['daily_limit']} daily | {status['hourly_sent']}/{status['hourly_limit']} hourly")
     
-    print(f"✅ Sent {sent_count} follow-up email(s)")
+    sent_count = 0
+    failed_count = 0
+    rate_limited_count = 0
+    
+    for i, email_addr in enumerate(filtered_emails):
+        try:
+            # Check if we can send email
+            can_send, reason = rate_limiter.can_send_email()
+            
+            if not can_send:
+                print(f"\n⚠️  Follow-up rate limit reached: {reason}")
+                
+                if "Daily limit" in reason:
+                    print(f"📅 Daily limit reached. Stopping follow-ups for today.")
+                    reset_info = rate_limiter.get_next_reset_time()
+                    print(f"📅 Next reset in: {reset_info['daily_reset']}")
+                    break
+                    
+                elif "Hourly limit" in reason:
+                    print(f"⏰ Hourly limit reached. Waiting 1 hour for follow-ups...")
+                    reset_info = rate_limiter.get_next_reset_time()
+                    print(f"⏰ Next hourly reset in: {reset_info['hourly_reset']}")
+                    time.sleep(3600)  # Wait 1 hour
+                    continue
+                    
+                elif "Burst limit" in reason:
+                    print(f"💥 Burst limit reached. Taking a 5-minute follow-up break...")
+                    rate_limiter.wait_if_needed()  # This handles burst cooldown
+                    continue
+                    
+                rate_limited_count += 1
+                continue
+            
+            # Apply rate limiting delay
+            rate_limiter.wait_if_needed()
+            
+            print(f"📧 [{i+1}/{len(filtered_emails)}] Follow-up to: {email_addr}")
+            
+            # Get original message ID for threading
+            original_msg_id = get_original_message_id(email_addr)
+            
+            # Send with threading headers and resume attachment
+            success, _ = send_email(
+                email_addr, 
+                subject, 
+                body,
+                attachment_path=resume_path,
+                in_reply_to=original_msg_id,
+                references=original_msg_id
+            )
+            
+            if success:
+                sent_count += 1
+                rate_limiter.record_email_sent()
+                
+                # Show progress every 3 follow-ups
+                if sent_count % 3 == 0:
+                    current_status = rate_limiter.get_status()
+                    print(f"📈 Follow-up Progress: {sent_count} sent | Daily: {current_status['daily_sent']}/{current_status['daily_limit']} | Hourly: {current_status['hourly_sent']}/{current_status['hourly_limit']}")
+                    
+            else:
+                failed_count += 1
+                # Add failed email to blocklist
+                add_to_blocklist(email_addr, "Follow-up failed")
+                
+        except KeyboardInterrupt:
+            print(f"\n⛔ Follow-up sending interrupted by user")
+            break
+        except Exception as e:
+            print(f"❌ Error sending follow-up to {email_addr}: {e}")
+            failed_count += 1
+            time.sleep(30)  # Wait on error
+    
+    print(f"\n📊 Follow-up Email Summary:")
+    print(f"  ✅ Sent: {sent_count}")
+    print(f"  ❌ Failed: {failed_count}")
+    if rate_limited_count > 0:
+        print(f"  ⏱️ Rate limited: {rate_limited_count}")
+    
+    # Final status
+    final_status = rate_limiter.get_status()
+    print(f"📊 Final Follow-up Status: {final_status['daily_sent']}/{final_status['daily_limit']} total daily emails used")
 
 
 if __name__ == '__main__':

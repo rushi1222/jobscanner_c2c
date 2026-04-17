@@ -3,4 +3,4 @@ pyautogui
 webdriver_manager
 PyYAML
 validate_email
- 
+APScheduler
