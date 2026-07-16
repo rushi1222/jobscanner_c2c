@@ -19,18 +19,89 @@ from datetime import datetime, timedelta
 import time
 import csv
 import hashlib
+import re
+import html as html_lib
 from email_rate_limiter import EmailRateLimiter
 
 
-def load_email_config():
-    """Load email configuration from email.yaml"""
+def load_email_config(config_file="users/email1.yaml"):
+    """Load email configuration from specified user config file"""
     try:
-        with open("email.yaml", 'r', encoding='utf-8') as stream:
+        with open(config_file, 'r', encoding='utf-8') as stream:
             config = yaml.safe_load(stream)
-            return config['email_settings']
+            email_settings = config['email_settings']
+            if 'cc_emails' not in email_settings or email_settings['cc_emails'] is None:
+                email_settings['cc_emails'] = []
+            return email_settings
     except Exception as e:
-        print(f"❌ Error loading email config: {e}")
+        print(f"❌ Error loading email config from {config_file}: {e}")
         return None
+
+
+def load_user_config(config_file="users/email1.yaml"):
+    """Load full user configuration from specified config file including positions and resumeMapping"""
+    try:
+        with open(config_file, 'r', encoding='utf-8') as stream:
+            config = yaml.safe_load(stream)
+            return config
+    except Exception as e:
+        print(f"❌ Error loading user config from {config_file}: {e}")
+        return None
+
+
+def get_positions(config_file="users/email1.yaml"):
+    """Get positions list from user config"""
+    config = load_user_config(config_file)
+    if config and 'positions' in config:
+        return config['positions']
+    return []
+
+
+def get_resume_mapping(config_file="users/email1.yaml"):
+    """Get resume mapping from user config"""
+    config = load_user_config(config_file)
+    if config and 'resumeMapping' in config:
+        return config['resumeMapping']
+    return {}
+
+
+def get_personal_info(config_file="users/email1.yaml"):
+    """Get personal information from user config"""
+    config = load_user_config(config_file)
+    if config and 'personalInfo' in config:
+        return config['personalInfo']
+    return {}
+
+
+def mark_emails_as_sent(email_addresses):
+    """Update sent status to true for successfully sent emails"""
+    output_file = "emails_output.csv"
+    if not os.path.exists(output_file):
+        return
+    
+    try:
+        # Read all rows
+        rows = []
+        with open(output_file, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            header = next(reader, None)
+            rows.append(header)
+            
+            # Update sent status for matching emails
+            for row in reader:
+                if len(row) >= 7:
+                    email_addr = row[0].lower()
+                    if email_addr in [e.lower() for e in email_addresses]:
+                        row[6] = "true"  # Mark as sent
+                rows.append(row)
+        
+        # Write back
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerows(rows)
+            
+    except Exception as e:
+        print(f"⚠️ Error updating sent status: {e}")
 
 
 def load_blocklist():
@@ -45,7 +116,21 @@ def load_blocklist():
                     line = line.strip()
                     # Skip empty lines and comments
                     if line and not line.startswith('#'):
-                        blocklist.add(line.lower())
+                        # Keep only the actual block token(s), ignore inline comments.
+                        content = line.split('#', 1)[0].strip()
+                        if not content:
+                            continue
+
+                        # Normal case: one token per line (email / @domain / domain).
+                        for token in content.split():
+                            token = token.strip().strip(',;')
+                            if token:
+                                blocklist.add(token.lower())
+
+                        # Recovery for malformed concatenated lines: also extract any
+                        # valid email-like patterns so accidental merges still block.
+                        for email_match in re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', content):
+                            blocklist.add(email_match.lower())
         except Exception as e:
             print(f"⚠️ Error loading blocklist: {e}")
     
@@ -73,7 +158,7 @@ def add_to_blocklist(email_address, reason="Unreachable"):
 def is_email_blocked(email_address):
     """Check if an email address is in the blocklist"""
     blocklist = load_blocklist()
-    email_lower = email_address.lower()
+    email_lower = str(email_address).strip().lower()
     
     # Check exact match
     if email_lower in blocklist:
@@ -99,7 +184,116 @@ def generate_message_id(to_email, subject):
     return make_msgid(domain="gmail.com", idstring=hash_part)
 
 
-def send_email(to_email, subject, body, attachment_path=None, message_id=None, in_reply_to=None, references=None):
+def _format_expected_rate(value):
+    """Format expected rate for email body."""
+    if value is None or value == '':
+        return "N/A"
+    if isinstance(value, (int, float)):
+        return f"${value}/hr"
+    value_str = str(value).strip()
+    return value_str if value_str else "N/A"
+
+
+def build_personal_info_lines(personal_info, include_name=True):
+    """Build bullet-point lines from base and dynamic personalInfo fields."""
+    info = personal_info or {}
+
+    first_name = str(info.get('First Name', 'Your Name')).strip()
+    last_name = str(info.get('Last Name', '')).strip()
+    full_name = f"{first_name} {last_name}".strip()
+
+    lines = []
+    if include_name:
+        lines.append(f"• Name: {full_name}")
+
+    location = str(info.get('Location', '')).strip()
+    if location:
+        relocation = str(info.get('Relocation', '')).strip().lower()
+        if relocation in {'yes', 'y', 'true'}:
+            lines.append(f"• Location: {location} (Open to relocation)")
+        else:
+            lines.append(f"• Location: {location}")
+
+    visa_status = str(info.get('Visa Status', '')).strip()
+    if visa_status:
+        lines.append(f"• Visa Status: {visa_status}")
+
+    lines.append(f"• Expected Rate: {_format_expected_rate(info.get('ExpectedPayPerHour'))}")
+
+    phone = str(info.get('Phone', '')).strip()
+    if phone:
+        lines.append(f"• Contact: {phone}")
+
+    employer_name = str(info.get('Employer Name', '')).strip()
+    employer_company = str(info.get('Employer Company', '')).strip()
+    employer_email = str(info.get('Employer Email', '')).strip()
+    employer_phone = str(info.get('Employer Phone', '')).strip()
+
+    if employer_name or employer_company or employer_email or employer_phone:
+        lines.append("")
+        lines.append("**Employer Details:**")
+        if employer_name:
+            lines.append(f"• Name: {employer_name}")
+        if employer_company:
+            lines.append(f"• Company: {employer_company}")
+        if employer_email:
+            lines.append(f"• Email: {employer_email}")
+        if employer_phone:
+            lines.append(f"• Phone: {employer_phone}")
+
+    base_keys = {
+        'First Name',
+        'Last Name',
+        'Phone',
+        'Location',
+        'Visa Status',
+        'Relocation',
+        'ExpectedPayPerHour',
+        'Employer Name',
+        'Employer Company',
+        'Employer Email',
+        'Employer Phone'
+    }
+
+    for key, value in info.items():
+        if key in base_keys:
+            continue
+        value_str = str(value).strip()
+        if value_str:
+            lines.append(f"• {key}: {value_str}")
+
+    return lines, first_name, full_name
+
+
+def build_cc_list(config_file="users/email1.yaml"):
+    """Build CC list from email settings and employer email in personal info."""
+    config = load_email_config(config_file) or {}
+    cc_emails = [str(x).strip().lower() for x in (config.get('cc_emails', []) or []) if str(x).strip()]
+
+    personal_info = get_personal_info(config_file)
+    employer_email = str(personal_info.get('Employer Email', '')).strip().lower() if personal_info else ''
+    if employer_email:
+        cc_emails.append(employer_email)
+
+    # Deduplicate while preserving order
+    deduped = []
+    seen = set()
+    for email_addr in cc_emails:
+        if email_addr not in seen:
+            seen.add(email_addr)
+            deduped.append(email_addr)
+    return deduped
+
+
+def format_body_as_html(body):
+    """Convert simple markdown-style **bold** text into HTML email content."""
+    escaped = html_lib.escape(body)
+    # Support simple bold markers used in templates.
+    escaped = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', escaped)
+    return f"<html><body style=\"font-family: Arial, sans-serif; line-height: 1.5;\">{escaped.replace(chr(10), '<br>')}</body></html>"
+
+
+def send_email(to_email, subject, body, attachment_path=None, message_id=None, in_reply_to=None, references=None, config_file="users/email1.yaml", cc_emails=None):
     """
     Send an email using SMTP.
     
@@ -111,11 +305,13 @@ def send_email(to_email, subject, body, attachment_path=None, message_id=None, i
         message_id: Optional Message-ID for tracking
         in_reply_to: Optional In-Reply-To header for threading
         references: Optional References header for threading
+        config_file: Path to user config file
+        cc_emails: Optional list of CC recipients
     
     Returns:
         tuple: (success: bool, message_id: str)
     """
-    config = load_email_config()
+    config = load_email_config(config_file)
     if not config:
         print("❌ Failed to load email configuration")
         return False, None
@@ -131,6 +327,9 @@ def send_email(to_email, subject, body, attachment_path=None, message_id=None, i
         msg['From'] = sender_email
         msg['To'] = to_email
         msg['Subject'] = subject
+        cc_list = [str(x).strip() for x in (cc_emails or []) if str(x).strip()]
+        if cc_list:
+            msg['Cc'] = ', '.join(cc_list)
         
         # Generate or use provided Message-ID
         if not message_id:
@@ -143,8 +342,13 @@ def send_email(to_email, subject, body, attachment_path=None, message_id=None, i
         if references:
             msg['References'] = references
         
-        # Add body
-        msg.attach(MIMEText(body, 'plain'))
+        # Add body (plain + HTML). HTML makes heading emphasis render as true bold.
+        plain_body = body.replace("**", "")
+        html_body = format_body_as_html(body)
+        body_part = MIMEMultipart('alternative')
+        body_part.attach(MIMEText(plain_body, 'plain'))
+        body_part.attach(MIMEText(html_body, 'html'))
+        msg.attach(body_part)
         
         # Add attachment if provided
         if attachment_path and os.path.exists(attachment_path):
@@ -162,7 +366,8 @@ def send_email(to_email, subject, body, attachment_path=None, message_id=None, i
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
             server.login(sender_email, sender_password)
-            server.send_message(msg)
+            recipients = [to_email] + cc_list
+            server.sendmail(sender_email, recipients, msg.as_string())
         
         print(f"✅ Email sent successfully to {to_email}")
         return True, message_id
@@ -172,7 +377,7 @@ def send_email(to_email, subject, body, attachment_path=None, message_id=None, i
         return False, None
 
 
-def send_bulk_emails(email_list, subject, body, attachment_path=None):
+def send_bulk_emails(email_list, subject, body, attachment_path=None, config_file="users/email1.yaml"):
     """
     Send the same email to multiple recipients with rate limiting.
     
@@ -181,6 +386,7 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
         subject: Email subject
         body: Email body text
         attachment_path: Optional path to file attachment
+        config_file: Path to user config file
     
     Returns:
         dict: Summary with 'sent' and 'failed' counts, plus message_ids
@@ -194,10 +400,14 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
     
     # Initialize rate limiter
     rate_limiter = EmailRateLimiter()
+    cc_emails = build_cc_list(config_file)
     
     # Filter blocked emails and Gmail addresses
     filtered_emails = []
     for email_addr in email_list:
+        email_addr = str(email_addr).strip()
+        if not email_addr:
+            continue
         if is_email_blocked(email_addr):
             print(f"🚫 Blocked: {email_addr}")
             blocked_count += 1
@@ -252,7 +462,14 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
             print(f"📧 [{i+1}/{len(filtered_emails)}] Sending to: {email_addr}")
             
             # Send the email
-            success, msg_id = send_email(email_addr, subject, body, attachment_path)
+            success, msg_id = send_email(
+                email_addr,
+                subject,
+                body,
+                attachment_path,
+                config_file=config_file,
+                cc_emails=cc_emails
+            )
             
             if success:
                 sent_count += 1
@@ -266,8 +483,7 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
                     
             else:
                 failed_count += 1
-                # Add failed email to blocklist if it bounced
-                add_to_blocklist(email_addr, "Send failed")
+                # Note: Bounce-check will auto-block legitimately failed emails
                 
         except KeyboardInterrupt:
             print(f"\n⛔ Email sending interrupted by user")
@@ -276,7 +492,7 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
             print(f"❌ Error sending email to {email_addr}: {e}")
             failed_count += 1
             # Wait a bit on error to avoid rapid failures
-            time.sleep(30)
+            time.sleep(15)
     
     print(f"\n📊 Email Sending Summary:")
     print(f"  ✅ Sent: {sent_count}")
@@ -293,8 +509,11 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
     print(f"📊 Final Status: {final_status['daily_sent']}/{final_status['daily_limit']} daily emails used")
     
     # Save message IDs to file for threading
-    save_message_ids(message_ids)
-    
+    save_message_ids(message_ids)    
+    # Mark successfully sent emails in CSV
+    successfully_sent = list(message_ids.keys())
+    if successfully_sent:
+        mark_emails_as_sent(successfully_sent)    
     return {
         'sent': sent_count, 
         'failed': failed_count, 
@@ -305,7 +524,7 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None):
     }
 
 
-def create_email_template(position, personal_info):
+def create_email_template(position, personal_info, config_file="users/email1.yaml"):
     """
     Creates email subject and body template for job application.
     
@@ -316,25 +535,24 @@ def create_email_template(position, personal_info):
     Returns:
         tuple: (subject, body)
     """
-    first_name = personal_info.get('First Name', 'Your Name')
-    last_name = personal_info.get('Last Name', '')
-    full_name = f"{first_name} {last_name}".strip()
-    pay_rate = personal_info.get('ExpectedPayPerHour', 0)
+    detail_lines, first_name, full_name = build_personal_info_lines(personal_info, include_name=True)
     
     # Create email subject
-    subject = f"Application for {position} - C2C"
+    subject = f"{position} - C2C"
     
     # Create email body
     body = f"""Hi,
 
-Applying for {position} - C2C.
+    my name is {first_name}
 
-# Visa: H1B
-# Location: Dallas, TX
-# Open to relocation
-# Rate: ${pay_rate}/hr
+I came across your post for the {position} position and wanted to express my interest in this C2C opportunity. I believe my skills and experience would be a great fit for this role.
 
-Resume attached.
+**Here are my details:**
+{chr(10).join(detail_lines)}
+
+I've attached my resume for your review. I would appreciate the opportunity to discuss how I can contribute to your team's success.
+
+Looking forward to hearing from you.
 
 Best regards,
 {full_name}"""
@@ -342,18 +560,19 @@ Best regards,
     return subject, body
 
 
-def check_email_replies(hours=3):
+def check_email_replies(hours=3, config_file="users/email1.yaml"):
     """
     Check Gmail inbox for replies to emails sent in the last X hours.
     Also checks for bounce-back/undeliverable messages and adds to blocklist.
     
     Args:
         hours: How many hours back to check for sent emails
+        config_file: Path to user config file
     
     Returns:
         dict: {'replied': [emails], 'no_reply': [emails], 'bounced': [emails]}
     """
-    config = load_email_config()
+    config = load_email_config(config_file)
     if not config:
         print("❌ Failed to load email configuration")
         return {'replied': [], 'no_reply': [], 'bounced': []}
@@ -423,7 +642,6 @@ def check_email_replies(hours=3):
                                 body = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
                             
                             # Extract bounced email addresses from body
-                            import re
                             # Look for email patterns in bounce message
                             email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
                             found_emails = re.findall(email_pattern, body)
@@ -550,7 +768,7 @@ def get_original_message_id(email_addr):
     return None
 
 
-def send_followup_emails(no_reply_emails, position, personal_info, resume_path=None):
+def send_followup_emails(no_reply_emails, position, personal_info, resume_path=None, config_file="users/email1.yaml"):
     """
     Send follow-up emails to contacts who haven't replied with RATE LIMITING.
     Uses threading headers to reply in the same email thread.
@@ -560,6 +778,7 @@ def send_followup_emails(no_reply_emails, position, personal_info, resume_path=N
         position: Job position
         personal_info: Personal information dict
         resume_path: Optional path to resume file to attach
+        config_file: Path to user config file
     """
     if not no_reply_emails:
         print("✅ No follow-up emails needed")
@@ -568,22 +787,24 @@ def send_followup_emails(no_reply_emails, position, personal_info, resume_path=N
     # Initialize rate limiter for follow-ups
     rate_limiter = EmailRateLimiter()
     
-    first_name = personal_info.get('First Name', 'Your Name')
-    last_name = personal_info.get('Last Name', '')
-    full_name = f"{first_name} {last_name}".strip()
-    pay_rate = personal_info.get('ExpectedPayPerHour', 0)
+    detail_lines, _, full_name = build_personal_info_lines(personal_info, include_name=False)
+    cc_emails = build_cc_list(config_file)
     
     subject = f"Re: Application for {position} - C2C"
     
     body = f"""Hi,
 
-Following up on {position} - C2C.
-# Visa: H1B
-# Location: Dallas, TX
-# Open to relocation
-# Rate: ${pay_rate}/hr
+I wanted to follow up on my previous email regarding the {position} position.
 
-Resume attached. Happy to discuss.
+I'm very interested in this C2C opportunity and would appreciate the chance to discuss it further.
+
+**Here's a quick recap of my details:**
+
+{chr(10).join(detail_lines)}
+
+I've re-attached my resume for your convenience. Please let me know if you need any additional information or would like to schedule a call.
+
+Thank you for your time and consideration.
 
 Best regards,
 {full_name}"""
@@ -593,6 +814,9 @@ Best regards,
     blocked_count = 0
     gmail_count = 0
     for email_addr in no_reply_emails:
+        email_addr = str(email_addr).strip()
+        if not email_addr:
+            continue
         if is_email_blocked(email_addr):
             print(f"🚫 Blocked: {email_addr}")
             blocked_count += 1
@@ -660,7 +884,9 @@ Best regards,
                 body,
                 attachment_path=resume_path,
                 in_reply_to=original_msg_id,
-                references=original_msg_id
+                references=original_msg_id,
+                config_file=config_file,
+                cc_emails=cc_emails
             )
             
             if success:
@@ -674,8 +900,7 @@ Best regards,
                     
             else:
                 failed_count += 1
-                # Add failed email to blocklist
-                add_to_blocklist(email_addr, "Follow-up failed")
+                # Note: Bounce-check will auto-block legitimately failed emails
                 
         except KeyboardInterrupt:
             print(f"\n⛔ Follow-up sending interrupted by user")
@@ -683,7 +908,7 @@ Best regards,
         except Exception as e:
             print(f"❌ Error sending follow-up to {email_addr}: {e}")
             failed_count += 1
-            time.sleep(30)  # Wait on error
+            time.sleep(15)  # Wait on error
     
     print(f"\n📊 Follow-up Email Summary:")
     print(f"  ✅ Sent: {sent_count}")

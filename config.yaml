@@ -45,21 +45,7 @@ sort_by:
     relevance: False
     date_posted: True
 
-# Resume mapping: position -> resume filename
-# Place resume files in 'resumes/' folder with these exact names
-resumeMapping:
-  f2f react developer c2c: sai_kotamraju.docx
-  f2f genAI developer c2c: sai_kotamraju.docx
-  f2f java developer c2c: sai_kotamraju.docx
-
-
-# Remove hash sign to add positions. You can add as many as you need,
-# but preserve formatting
-positions:
-- f2f react developer c2c
-- f2f genAI developer c2c
-- f2f java developer c2c
-
+# Note: resumeMapping and positions are now configured per-user in users/email.yaml
 
 # - frontend Developer NOT "Lensa" NOT "Jobot" NOT "Kiddom" NOT "HTC Global Services" NOT "Dice" NOT "Revature" NOT "Jobs via eFinancialCareers" NOT "Apex Systems" NOT TEKsystems NOT Modis NOT Experis NOT Collabera NOT "Insight Global" NOT "Robert Half Technology" NOT "Randstad Technologies" NOT Vaco NOT Synechron NOT "Mphasis Consulting Services" NOT Kforce
 # - Java Developer

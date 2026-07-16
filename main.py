@@ -27,7 +27,24 @@ from datetime import datetime
 from validate_email import validate_email
 from webdriver_manager.chrome import ChromeDriverManager
 from linkedineasyapply import LinkedinEasyApply
-from email_notifier import check_email_replies, send_followup_emails
+from email_notifier import check_email_replies, send_followup_emails, get_positions, get_resume_mapping, get_personal_info
+
+def load_users():
+    """Load user configurations from users.yaml"""
+    try:
+        with open("users.yaml", 'r', encoding='utf-8') as stream:
+            config = yaml.safe_load(stream)
+            return config.get('users', [])
+    except Exception as e:
+        print(f"❌ Error loading users config: {e}")
+        return []
+
+def get_enabled_users():
+    """Get list of enabled users from users.yaml"""
+    users = load_users()
+    enabled = [user for user in users if user.get('enabled', False)]
+    return enabled
+
 def init_browser():
     browser_options = Options()
     options = [
@@ -54,7 +71,13 @@ def init_browser():
     driver.maximize_window()
     return driver
 
-def validate_yaml():
+def validate_yaml(config_file="users/email1.yaml"):
+    """
+    Validates config.yaml and loads positions/resumeMapping from user config file
+    
+    Args:
+        config_file: Path to user-specific config file (e.g., users/email1.yaml)
+    """
     with open("config.yaml", 'r', encoding='utf-8') as stream:
         try:
             parameters = yaml.safe_load(stream)
@@ -69,7 +92,6 @@ def validate_yaml():
                         'experienceLevel',
                         'jobTypes',
                         'date',
-                        'positions',
                         'locations',
                         'residentStatus',
                         'distance',
@@ -122,7 +144,6 @@ def validate_yaml():
 
     approved_distances = {0, 5, 10, 25, 50, 100}
     assert parameters['distance'] in approved_distances
-    assert len(parameters['positions']) > 0
     assert len(parameters['locations']) > 0
     assert len(parameters['uploads']) >= 1 and 'resume' in parameters['uploads']
     assert len(parameters['checkboxes']) > 0
@@ -149,15 +170,23 @@ def validate_yaml():
         assert isinstance(experience[tech], int)
     assert 'default' in experience
 
-    assert len(parameters['personalInfo'])
-    personal_info = parameters.get('personalInfo', [])
-    for info in personal_info:
-        assert personal_info[info] != ''
-
     assert len(parameters['eeo'])
     eeo = parameters.get('eeo', [])
     for survey_question in eeo:
         assert eeo[survey_question] != ''
+
+    # Load positions, resumeMapping, and personalInfo from user-specific config
+    positions = get_positions(config_file)
+    resume_mapping = get_resume_mapping(config_file)
+    personal_info = get_personal_info(config_file)
+    
+    assert len(positions) > 0, f"At least one position must be defined in {config_file}"
+    assert len(personal_info) > 0, f"Personal info must be defined in {config_file}"
+    
+    # Override config.yaml personalInfo with user-specific personalInfo
+    parameters['positions'] = positions
+    parameters['resumeMapping'] = resume_mapping
+    parameters['personalInfo'] = personal_info
 
     return parameters
 
@@ -170,63 +199,157 @@ def space_before_next():
 if __name__ == '__main__':
     while True:  # Run indefinitely, restart on any error
         try:
-            parameters = validate_yaml()
+            # Load enabled users from users.yaml
+            enabled_users = get_enabled_users()
             
-            # Check for replies to emails sent in last 3 hours
-            print("\n" + "="*60)
-            print("CHECKING EMAIL REPLIES")
-            print("="*60)
-            reply_status = check_email_replies(hours=3)
+            if not enabled_users:
+                print("❌ No enabled users found in users.yaml!")
+                print("⏸️  Waiting 5 minutes before retrying...")
+                time.sleep(300)
+                continue
             
-            # Send follow-up emails to those who didn't reply
-            if reply_status['no_reply']:
-                print("\n📤 Sending follow-up emails...")
-                # Group by position from CSV
-                import csv
-                from datetime import datetime, timedelta
+            print(f"\n🎯 Found {len(enabled_users)} enabled user(s)")
+            
+            # Process each enabled user
+            for user in enabled_users:
+                user_name = user.get('name', 'Unknown')
+                config_file = user.get('config_file', 'users/email1.yaml')
                 
-                no_reply_by_position = {}
-                cutoff_time = datetime.now() - timedelta(hours=3)
+                print("\n" + "="*70)
+                print(f"👤 PROCESSING USER: {user_name}")
+                print(f"📁 Config: {config_file}")
+                print("="*70)
                 
-                if os.path.exists('emails_output.csv'):
-                    with open('emails_output.csv', 'r', encoding='utf-8') as f:
-                        reader = csv.reader(f)
-                        next(reader, None)
-                        for row in reader:
-                            if len(row) >= 3:
-                                email_addr = row[0].lower()
-                                position = row[1]
-                                sent_time = datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S')
+                # Validate configuration for this user
+                parameters = validate_yaml(config_file)
+                
+                # Check for replies to emails sent in last 3 hours
+                print("\n" + "="*60)
+                print(f"CHECKING EMAIL REPLIES FOR {user_name}")
+                print("="*60)
+                
+                # Re-check if user is still enabled (in case users.yaml changed during execution)
+                current_enabled_users = get_enabled_users()
+                user_still_enabled = any(u.get('config_file') == config_file for u in current_enabled_users)
+                
+                if not user_still_enabled:
+                    print(f"⚠️ User {user_name} is now disabled in users.yaml, skipping email checks")
+                else:
+                    reply_status = check_email_replies(hours=3, config_file=config_file)
+                    
+                    # Process unsent and no-reply emails
+                    print("\n📤 Processing unsent and follow-up emails...")
+                    import csv
+                    from datetime import datetime, timedelta
+                    
+                    unsent_by_position = {}  # Emails that were logged but never sent
+                    no_reply_by_position = {}  # Emails that were sent but got no reply
+                    cutoff_time = datetime.now() - timedelta(hours=3)
+                    
+                    # Get sender email from current user's config
+                    from email_notifier import load_email_config, create_email_template, send_bulk_emails
+                    user_email_config = load_email_config(config_file)
+                    current_sender_email = user_email_config['sender_email'].lower() if user_email_config else 'unknown'
+                    
+                    if os.path.exists('emails_output.csv'):
+                        with open('emails_output.csv', 'r', encoding='utf-8') as f:
+                            reader = csv.reader(f)
+                            next(reader, None)
+                            for row in reader:
+                                if len(row) >= 7:  # New format with Sent column
+                                    email_addr = row[0].lower()
+                                    position = row[1]
+                                    sent_time = datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S')
+                                    row_sender = row[5].lower() if len(row) > 5 else ''
+                                    was_sent = row[6].lower() == 'true' if len(row) > 6 else True  # Default true for old entries
+                                    
+                                    # Only process emails from THIS user for their positions
+                                    if (row_sender == current_sender_email and
+                                        position in parameters.get('positions', []) and
+                                        sent_time >= cutoff_time):
+                                        
+                                        # Separate unsent vs no-reply
+                                        if not was_sent:
+                                            # Email was logged but never sent (program crashed)
+                                            if position not in unsent_by_position:
+                                                unsent_by_position[position] = []
+                                            unsent_by_position[position].append(email_addr)
+                                        elif email_addr in reply_status['no_reply']:
+                                            # Email was sent but got no reply
+                                            if position not in no_reply_by_position:
+                                                no_reply_by_position[position] = []
+                                            no_reply_by_position[position].append(email_addr)
+                    
+                    resume_mapping = parameters.get('resumeMapping', {})
+                    
+                    # First, resend unsent emails as ORIGINAL emails (not follow-ups)
+                    if unsent_by_position:
+                        print("\n🔄 Re-sending emails that failed to send previously...")
+                        for position, emails in unsent_by_position.items():
+                            print(f"\n📋 Position: {position} - {len(emails)} unsent email(s)")
+                            
+                            # Get resume
+                            resume_filename = resume_mapping.get(position)
+                            resume_path = os.path.join("resumes", resume_filename) if resume_filename else None
+                            
+                            if resume_path and os.path.exists(resume_path):
+                                print(f"📎 Using resume: {resume_filename}")
                                 
-                                if email_addr in reply_status['no_reply'] and sent_time >= cutoff_time:
-                                    if position not in no_reply_by_position:
-                                        no_reply_by_position[position] = []
-                                    no_reply_by_position[position].append(email_addr)
+                                # Send as ORIGINAL email (not follow-up)
+                                subject, body = create_email_template(position, parameters['personalInfo'], config_file)
+                                send_bulk_emails(emails, subject, body, resume_path, config_file)
+                            else:
+                                print(f"⚠️ Resume not found, skipping: {position}")
+                    
+                    # Add delay between unsent and follow-up batches
+                    if unsent_by_position and no_reply_by_position:
+                        print("\n⏸️  Taking a 1-minute break between unsent and follow-up emails...")
+                        time.sleep(60)
+                    
+                    # Then, send follow-ups for emails that were sent but got no reply
+                    if no_reply_by_position:
+                        print("\n📤 Sending follow-up emails...")
+                        for position, emails in no_reply_by_position.items():
+                            print(f"\n📋 Position: {position} - {len(emails)} follow-up(s)")
+                            
+                            # Get resume
+                            resume_filename = resume_mapping.get(position)
+                            resume_path = os.path.join("resumes", resume_filename) if resume_filename else None
+                            
+                            if resume_path and os.path.exists(resume_path):
+                                print(f"📎 Using resume for follow-up: {resume_filename}")
+                                send_followup_emails(emails, position, parameters['personalInfo'], resume_path, config_file)
+                            else:
+                                print(f"⚠️ Resume not found for follow-up: {position}")
                 
-                # Send follow-ups grouped by position
-                resume_path = parameters.get('uploads', {}).get('resume', None)
-                for position, emails in no_reply_by_position.items():
-                    print(f"\n📋 Position: {position}")
-                    send_followup_emails(emails, position, parameters['personalInfo'], resume_path)
-            
-            print("\n" + "="*60)
-            print("STARTING JOB SEARCH")
-            print("="*60)
-            
-            browser = init_browser()
+                print("\n" + "="*60)
+                print(f"STARTING JOB SEARCH FOR {user_name}")
+                print("="*60)
+                
+                browser = init_browser()
 
-            bot = LinkedinEasyApply(parameters, browser)
-            bot.login()
-            bot.security_check()
-            bot.search_posts()  # Search for posts using keywords from positions list
+                bot = LinkedinEasyApply(parameters, browser, config_file)
+                bot.login()
+                bot.security_check()
+                bot.search_posts()
+                
+                current_line = inspect.currentframe().f_lineno
+                print(f"\n✅ Job search completed for {user_name}!")
+                print(f"📄 File: {__file__} | Line: {current_line}")
+                
+                # Close browser for this user
+                browser.quit()
+                
+                print(f"\n✅ Completed processing for {user_name}")
+                print("="*70)
+                
+                # Add delay between users to avoid being flagged as spam
+                if user != enabled_users[-1]:  # Not the last user
+                    print("\n⏸️  Taking a 1-minute break before processing next user...")
+                    time.sleep(60)
             
-            current_line = inspect.currentframe().f_lineno
-            print("\n✅ Job search completed successfully!")
-            print(f"📄 File: {__file__} | Line: {current_line}")
+            print("\n✅ All enabled users processed successfully!")
             print("Program finished. Exiting...")
-            
-            # Close browser and exit
-            browser.quit()
             break  # Exit the outer while loop
                 
         except KeyboardInterrupt:

@@ -19,10 +19,10 @@ class EmailRateLimiter:
         # Gmail limits - Conservative to avoid blocks
         self.DAILY_LIMIT = 400      # Gmail's limit is 500, we use 400 to be safe
         self.HOURLY_LIMIT = 50      # Conservative hourly limit
-        self.BURST_LIMIT = 10       # Emails per burst before longer delay
-        self.MIN_DELAY = 20         # Minimum seconds between emails
-        self.MAX_DELAY = 60         # Maximum seconds between emails
-        self.BURST_DELAY = 300      # 5 minutes between bursts
+        self.BURST_LIMIT = 15       # Emails per burst before longer delay
+        self.MIN_DELAY = 10         # Minimum seconds between emails
+        self.MAX_DELAY = 25         # Maximum seconds between emails
+        self.BURST_DELAY = 120      # 2 minutes between bursts
         
         self.emails_this_hour = []
         self.emails_this_burst = 0
@@ -69,7 +69,7 @@ class EmailRateLimiter:
             if self.emails_this_burst >= self.BURST_LIMIT:
                 wait_time = self.BURST_DELAY
                 self.emails_this_burst = 0  # Reset burst counter
-                print(f"🔄 Burst limit reached. Cooling down for {wait_time//60} minutes...")
+                print(f"🔄 Burst limit reached. Cooling down for {int(wait_time//60)} minutes {int(wait_time%60)} seconds...")
                 time.sleep(wait_time)
             else:
                 # Calculate random delay between min and max, minus time already passed

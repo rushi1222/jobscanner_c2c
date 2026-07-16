@@ -18,12 +18,17 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from datetime import datetime
-from email_notifier import send_bulk_emails, create_email_template
+from email_notifier import send_bulk_emails, create_email_template, load_email_config
 
 
 class LinkedinEasyApply:
-    def __init__(self, parameters, driver):
+    def __init__(self, parameters, driver, config_file="users/email1.yaml"):
         self.browser = driver
+        self.config_file = config_file  # Store config file path for this user
+        
+        # Load sender email from config for tracking in CSV
+        email_config = load_email_config(config_file)
+        self.sender_email = email_config['sender_email'] if email_config else 'unknown'
         
         self.email = parameters['email']
         self.password = parameters['password']
@@ -199,7 +204,7 @@ class LinkedinEasyApply:
             
             # Save to output file
             if unique_emails:
-                new_emails_logged = self.save_emails_to_file(unique_emails, position)
+                new_emails_logged = self.save_emails_to_file(unique_emails, position, self.sender_email)
                 # Generate email template and send emails
                 if new_emails_logged:
                     self.send_emails_to_contacts(new_emails_logged, position)
@@ -208,9 +213,9 @@ class LinkedinEasyApply:
             
             # Pause after first position for now
 
-    def save_emails_to_file(self, emails, position):
+    def save_emails_to_file(self, emails, position, sender_email):
         """
-        Saves extracted emails to CSV file with timestamp and position.
+        Saves extracted emails to CSV file with timestamp, position, and sender.
         Avoids duplicates: same email + same position on same day won't be re-logged.
         """
         output_file = "emails_output.csv"
@@ -230,14 +235,18 @@ class LinkedinEasyApply:
                         email = row[0]
                         pos = row[1]
                         date_str = row[2].split(' ')[0]  # Extract date only (YYYY-MM-DD)
-                        existing_entries.add((email, pos, date_str))
+                        # Also check sender if available (for backward compatibility)
+                        sender = row[5] if len(row) > 5 else None
+                        existing_entries.add((email, pos, date_str, sender))
         
         # Filter out duplicates
         new_emails = []
         skipped_count = 0
         for email in emails:
-            entry_key = (email, position, current_date)
-            if entry_key in existing_entries:
+            entry_key = (email, position, current_date, sender_email)
+            # Also check without sender for backward compatibility
+            entry_key_old = (email, position, current_date, None)
+            if entry_key in existing_entries or entry_key_old in existing_entries:
                 print(f"  ⏭️  Skipped (already logged today): {email}")
                 skipped_count += 1
             else:
@@ -250,11 +259,11 @@ class LinkedinEasyApply:
                 
                 # Write header if file doesn't exist
                 if not file_exists:
-                    writer.writerow(["Email", "Position", "Date/Time", "Message-ID"])
+                    writer.writerow(["Email", "Position", "Date/Time", "Message-ID", "Reply-Status", "Sender-Email", "Sent"])
                 
-                # Write each new email (message_id will be added later when email is sent)
+                # Write each new email (sent status will be updated after successful send)
                 for email in new_emails:
-                    writer.writerow([email, position, current_datetime, ""])
+                    writer.writerow([email, position, current_datetime, "", "pending", sender_email, "false"])
                     print(f"  📝 Logged: {email}")
             
             print(f"\n✅ Saved {len(new_emails)} new email(s) to {output_file}")
@@ -272,7 +281,7 @@ class LinkedinEasyApply:
         Uses position-specific resume from resumeMapping.
         """
         # Create email template using email_notifier
-        subject, body = create_email_template(position, self.personal_info)
+        subject, body = create_email_template(position, self.personal_info, self.config_file)
         
         # Get position-specific resume from mapping
         resume_filename = self.resume_mapping.get(position)
@@ -290,4 +299,4 @@ class LinkedinEasyApply:
         
         # Send emails
         print(f"\n📧 Sending emails to {len(email_list)} recipient(s)...")
-        send_bulk_emails(email_list, subject, body, resume_path)
+        send_bulk_emails(email_list, subject, body, resume_path, self.config_file)

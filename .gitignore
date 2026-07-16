@@ -20,18 +20,15 @@ ChromeFeatureState
 *.json
 
 # Configs
-email.yaml
 config.yaml
-
-
+users.yaml
+users/
 
 # Output files with sensitive data
 *.log
 *.csv
-email.yaml
 blocklist/blocked_emails.txt
 blocked_emails.txt
-email_notifier.py
 
 
 # Resumes (personal documents)
