@@ -21,6 +21,7 @@ import csv
 import hashlib
 import re
 import html as html_lib
+import uuid
 from email_rate_limiter import EmailRateLimiter
 
 
@@ -178,8 +179,8 @@ def is_email_blocked(email_address):
 
 def generate_message_id(to_email, subject):
     """Generate a unique Message-ID for email threading"""
-    # Create a deterministic message ID based on recipient and subject
-    unique_string = f"{to_email}_{subject}_{datetime.now().strftime('%Y%m%d')}"
+    # Use high-precision timestamp + random salt so each outbound mail is unique.
+    unique_string = f"{to_email}_{subject}_{datetime.now().isoformat()}_{uuid.uuid4().hex}"
     hash_part = hashlib.md5(unique_string.encode()).hexdigest()[:16]
     return make_msgid(domain="gmail.com", idstring=hash_part)
 
@@ -293,7 +294,7 @@ def format_body_as_html(body):
     return f"<html><body style=\"font-family: Arial, sans-serif; line-height: 1.5;\">{escaped.replace(chr(10), '<br>')}</body></html>"
 
 
-def send_email(to_email, subject, body, attachment_path=None, message_id=None, in_reply_to=None, references=None, config_file="users/email1.yaml", cc_emails=None):
+def send_email(to_email, subject, body, attachment_path=None, message_id=None, in_reply_to=None, references=None, config_file="users/email1.yaml", cc_emails=None, force_new_thread=False):
     """
     Send an email using SMTP.
     
@@ -307,6 +308,7 @@ def send_email(to_email, subject, body, attachment_path=None, message_id=None, i
         references: Optional References header for threading
         config_file: Path to user config file
         cc_emails: Optional list of CC recipients
+        force_new_thread: When True, add unique headers to prevent thread grouping
     
     Returns:
         tuple: (success: bool, message_id: str)
@@ -341,6 +343,11 @@ def send_email(to_email, subject, body, attachment_path=None, message_id=None, i
             msg['In-Reply-To'] = in_reply_to
         if references:
             msg['References'] = references
+
+        # For first-touch outreach, force unique thread metadata per recipient.
+        if force_new_thread:
+            msg['X-Entity-Ref-ID'] = uuid.uuid4().hex
+            msg['X-JobScanner-Thread-ID'] = uuid.uuid4().hex
         
         # Add body (plain + HTML). HTML makes heading emphasis render as true bold.
         plain_body = body.replace("**", "")
@@ -468,7 +475,8 @@ def send_bulk_emails(email_list, subject, body, attachment_path=None, config_fil
                 body,
                 attachment_path,
                 config_file=config_file,
-                cc_emails=cc_emails
+                cc_emails=cc_emails,
+                force_new_thread=True
             )
             
             if success:
@@ -541,9 +549,7 @@ def create_email_template(position, personal_info, config_file="users/email1.yam
     subject = f"{position} - C2C"
     
     # Create email body
-    body = f"""Hi,
-
-    my name is {first_name}
+    body = f"""
 
 I came across your post for the {position} position and wanted to express my interest in this C2C opportunity. I believe my skills and experience would be a great fit for this role.
 
